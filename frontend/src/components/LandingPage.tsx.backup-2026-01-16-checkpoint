@@ -1,0 +1,1276 @@
+/**
+ * LandingPage - Immersive 3D Orbital Experience v2
+ *
+ * Improvements:
+ * - Larger 3D logo, single wireframe (blue only)
+ * - Venue spheres with proper brand colors and logos on front/back
+ * - Data pulses follow orbital paths, smaller, brighter, faster
+ * - Full-width layout with scroll interactivity
+ * - Parallax effects on scroll
+ */
+
+import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {
+  TrendingUp,
+  ArrowRight,
+  ChevronDown,
+  Shield,
+  Activity,
+  Target,
+  BookOpen,
+  Layers,
+  Percent,
+  Clock,
+  BarChart3,
+  AlertTriangle,
+  ChevronRight,
+  ExternalLink
+} from 'lucide-react';
+import { articles } from '../data/articles';
+
+// ============================================
+// VENUE CONFIGURATION - Brand accurate colors
+// ============================================
+const VENUES = [
+  {
+    id: 'hyperliquid',
+    name: 'Hyperliquid',
+    short: 'HL',
+    sphereColor: 0x000000,      // Black sphere
+    logoColor: 0x50e3c2,        // Mint green logo
+    lineColor: 0x50e3c2,        // Light green line
+    glowColor: 'rgba(80, 227, 194, 0.6)',
+    logo: '/venue-hyperliquid.png'
+  },
+  {
+    id: 'lighter',
+    name: 'Lighter',
+    short: 'LT',
+    sphereColor: 0x000000,      // Black sphere
+    logoColor: 0xffffff,        // White logo
+    lineColor: 0xffffff,        // White line
+    glowColor: 'rgba(255, 255, 255, 0.5)',
+    logo: '/venue-lighter.png'
+  },
+  {
+    id: 'pacifica',
+    name: 'Pacifica',
+    short: 'PA',
+    sphereColor: 0xffffff,      // White sphere
+    logoColor: 0x00d4ff,        // Cyan logo
+    lineColor: 0x00d4ff,        // Light blue line
+    glowColor: 'rgba(0, 212, 255, 0.6)',
+    logo: '/venue-pacifica.png'
+  },
+  {
+    id: 'extended',
+    name: 'Extended',
+    short: 'EX',
+    sphereColor: 0x0a0a0a,      // Near-black sphere
+    logoColor: 0x4ade80,        // Green icon
+    lineColor: 0x22c55e,        // Darker green line
+    glowColor: 'rgba(74, 222, 128, 0.6)',
+    logo: '/venue-extended.png'
+  },
+  {
+    id: 'variational',
+    name: 'Variational',
+    short: 'VA',
+    sphereColor: 0x0a1628,      // Space blue (brand color)
+    logoColor: 0xffffff,        // White mark
+    lineColor: 0x8b5cf6,        // Purple line
+    glowColor: 'rgba(139, 92, 246, 0.6)',
+    logo: '/venue-variational.png'
+  },
+];
+
+// ============================================
+// THREE.JS ORBITAL SCENE - Improved
+// ============================================
+const OrbitalScene = ({ onReady }: { onReady: () => void }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<{
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    renderer: THREE.WebGLRenderer;
+    orbitGroup: THREE.Group;
+    wireframeSphere: THREE.Mesh;
+    logo3D: THREE.Group | null;
+    venueGroups: THREE.Group[];
+    logoSprites: THREE.Sprite[];
+    orbitPivots: THREE.Object3D[];
+    connectionLines: THREE.Line[];
+    pulseParticles: THREE.Points | null;
+    pulseData: Array<{
+      venueIndex: number;
+      progress: number;
+      speed: number;
+      direction: number;
+      active: boolean;
+    }>;
+    isScrolling: boolean;
+  } | null>(null);
+  const animationRef = useRef<number>();
+  const mouseRef = useRef({ x: 0, y: 0 });
+  const loadingRef = useRef(true);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const container = containerRef.current;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    // Scene setup
+    const scene = new THREE.Scene();
+
+    // Camera - closer for more impact
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+    camera.position.z = 10;
+    camera.position.y = 0.5;
+
+    // Renderer - OPTIMIZED
+    const renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: false, // Disable for performance
+      powerPreference: 'high-performance'
+    });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Cap at 1.5 for performance
+    renderer.setClearColor(0x000000, 0);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.appendChild(renderer.domElement);
+
+    // Lighting - simplified for performance
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    directionalLight.position.set(5, 5, 5);
+    scene.add(directionalLight);
+
+    // Orbit group (tilted)
+    const orbitGroup = new THREE.Group();
+    orbitGroup.rotation.x = -0.2;
+    orbitGroup.rotation.z = 0.05;
+    scene.add(orbitGroup);
+
+    // ==========================================
+    // CENTER: Single blue wireframe only - SIMPLIFIED
+    // ==========================================
+    const wireframeGeometry = new THREE.IcosahedronGeometry(2.2, 1); // Reduced detail (2→1)
+    const wireframeMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00d4ff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.2,
+    });
+    const wireframeSphere = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
+    orbitGroup.add(wireframeSphere);
+
+    // Orbit ring (subtle torus) - SIMPLIFIED
+    const orbitRingGeometry = new THREE.TorusGeometry(4.2, 0.015, 8, 48); // Reduced segments
+    const orbitRingMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00d4ff,
+      transparent: true,
+      opacity: 0.1,
+    });
+    const orbitRing = new THREE.Mesh(orbitRingGeometry, orbitRingMaterial);
+    orbitRing.rotation.x = Math.PI / 2;
+    orbitGroup.add(orbitRing);
+
+    // ==========================================
+    // LOAD 3D LOGO GLB
+    // ==========================================
+    let logo3D: THREE.Group | null = null;
+    const gltfLoader = new GLTFLoader();
+
+    gltfLoader.load(
+      '/logo-54sd-3d.glb',
+      (gltf) => {
+        logo3D = gltf.scene;
+        logo3D.scale.set(2.8, 2.8, 2.8);
+        logo3D.position.set(0, -0.55, 0);
+
+        logo3D.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            if (child.material) {
+              const mat = child.material as THREE.MeshStandardMaterial;
+              mat.emissive = new THREE.Color(0x00d4ff);
+              mat.emissiveIntensity = 0.4;
+              mat.metalness = 0.9;
+              mat.roughness = 0.1;
+            }
+          }
+        });
+
+        orbitGroup.add(logo3D);
+        if (sceneRef.current) {
+          sceneRef.current.logo3D = logo3D;
+        }
+        loadingRef.current = false;
+        onReady();
+      },
+      undefined,
+      () => {
+        // Fallback procedural logo
+        const fallbackGroup = new THREE.Group();
+        const fallbackGeometry = new THREE.OctahedronGeometry(1.2, 0);
+        const fallbackMaterial = new THREE.MeshStandardMaterial({
+          color: 0x00d4ff,
+          emissive: 0x00d4ff,
+          emissiveIntensity: 0.4,
+          metalness: 0.9,
+          roughness: 0.1,
+        });
+        const fallback = new THREE.Mesh(fallbackGeometry, fallbackMaterial);
+        fallbackGroup.add(fallback);
+        fallbackGroup.position.set(0, -0.55, 0);
+        orbitGroup.add(fallbackGroup);
+        if (sceneRef.current) {
+          sceneRef.current.logo3D = fallbackGroup;
+        }
+        loadingRef.current = false;
+        onReady();
+      }
+    );
+
+    // ==========================================
+    // VENUE SATELLITES - Circular badge logos
+    // ==========================================
+    const venueGroups: THREE.Group[] = [];
+    const logoSprites: THREE.Sprite[] = [];
+    const orbitPivots: THREE.Object3D[] = [];
+    const connectionLines: THREE.Line[] = [];
+    const orbitRadius = 4.2;
+
+    // Helper: Create circular badge texture with glow border
+    const createCircularBadge = (
+      imgSrc: string,
+      glowColor: string,
+      venueId: string,
+      callback: (texture: THREE.CanvasTexture) => void
+    ) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const size = 128; // Texture size
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d')!;
+
+        const centerX = size / 2;
+        const centerY = size / 2;
+        const radius = size / 2 - 4; // Leave space for glow
+
+        // Draw glow border
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius + 3, 0, Math.PI * 2);
+        ctx.fillStyle = glowColor;
+        ctx.filter = 'blur(4px)';
+        ctx.fill();
+        ctx.filter = 'none';
+
+        // Draw SOLID dark background circle (prevents white bleed-through)
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#0a0a14'; // Solid dark, no transparency
+        ctx.fill();
+
+        // Clip to circle for logo
+        ctx.save();
+        ctx.beginPath();
+        const clipRadius = radius - 6;
+        ctx.arc(centerX, centerY, clipRadius, 0, Math.PI * 2);
+        ctx.clip();
+
+        // Draw logo centered and scaled - Lighter +100%, Variational +50%
+        let logoScale = 1.4;
+        if (venueId === 'lighter') logoScale = 2.8; // +100%
+        else if (venueId === 'variational') logoScale = 2.1; // +50%
+        const logoSize = radius * logoScale;
+        const logoX = centerX - logoSize / 2;
+        const logoY = centerY - logoSize / 2;
+        ctx.drawImage(img, logoX, logoY, logoSize, logoSize);
+        ctx.restore();
+
+        // Subtle inner border
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
+        ctx.strokeStyle = glowColor.replace('0.6', '0.4');
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.needsUpdate = true;
+        callback(texture);
+      };
+      img.src = imgSrc;
+    };
+
+    VENUES.forEach((venue, i) => {
+      const angle = (i / VENUES.length) * Math.PI * 2;
+
+      // Pivot for orbital motion
+      const pivot = new THREE.Object3D();
+      pivot.rotation.y = angle;
+      orbitGroup.add(pivot);
+      orbitPivots.push(pivot);
+
+      // Venue group
+      const venueGroup = new THREE.Group();
+      venueGroup.position.x = orbitRadius;
+
+      // Create circular badge sprite - Lighter is bigger
+      const spriteScale = 0.7; // Same size for all badges
+      createCircularBadge(venue.logo, venue.glowColor, venue.id, (texture) => {
+        const spriteMaterial = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          depthWrite: true,
+          depthTest: true, // Respect z-depth so logo3D occludes badges behind it
+          sizeAttenuation: true,
+        });
+        const logoSprite = new THREE.Sprite(spriteMaterial);
+        logoSprite.scale.set(spriteScale, spriteScale, 1);
+        logoSprite.position.set(0, 0, 0);
+        logoSprite.renderOrder = 10; // Draw badges after lines (lines=1)
+        venueGroup.add(logoSprite);
+        logoSprites.push(logoSprite);
+      });
+
+      pivot.add(venueGroup);
+      venueGroups.push(venueGroup);
+
+      // ==========================================
+      // CONNECTION LINES - Glowing venue-colored
+      // ==========================================
+      const lineGeometry = new THREE.BufferGeometry();
+      const linePositions = new Float32Array(6); // 2 points × 3 coords
+      lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+
+      // Create glowing line material with venue color
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: venue.lineColor,
+        transparent: true,
+        opacity: 0.6,
+        linewidth: 2,
+        depthTest: true,
+        depthWrite: false, // Don't write to depth buffer so badges always on top
+      });
+      const connectionLine = new THREE.Line(lineGeometry, lineMaterial);
+      connectionLine.renderOrder = 1; // Draw lines first
+      scene.add(connectionLine);
+      connectionLines.push(connectionLine);
+    });
+
+    // ==========================================
+    // DATA PULSES - Simplified particle system
+    // ==========================================
+    const maxPulses = 30; // Reduced for performance
+    const pulseGeometry = new THREE.BufferGeometry();
+    const pulsePositions = new Float32Array(maxPulses * 3);
+    const pulseSizes = new Float32Array(maxPulses);
+    const pulseColors = new Float32Array(maxPulses * 3);
+
+    pulseGeometry.setAttribute('position', new THREE.BufferAttribute(pulsePositions, 3));
+    pulseGeometry.setAttribute('size', new THREE.BufferAttribute(pulseSizes, 1));
+    pulseGeometry.setAttribute('color', new THREE.BufferAttribute(pulseColors, 3));
+
+    // Custom shader material for neon glow effect
+    const pulseShaderMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+      },
+      vertexShader: `
+        attribute float size;
+        attribute vec3 color;
+        varying vec3 vColor;
+        varying float vSize;
+        void main() {
+          vColor = color;
+          vSize = size;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size * (300.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vSize;
+        void main() {
+          vec2 center = gl_PointCoord - vec2(0.5);
+          float dist = length(center);
+          // Soft glow falloff
+          float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
+          // Inner bright core
+          float core = 1.0 - smoothstep(0.0, 0.15, dist);
+          vec3 finalColor = vColor + vec3(core * 0.5);
+          gl_FragColor = vec4(finalColor, alpha * 1.2);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    const pulseParticles = new THREE.Points(pulseGeometry, pulseShaderMaterial);
+    scene.add(pulseParticles);
+
+    // Pulse data array
+    const pulseData: Array<{
+      venueIndex: number;
+      progress: number;
+      speed: number;
+      direction: number;
+      active: boolean;
+    }> = [];
+
+    for (let i = 0; i < maxPulses; i++) {
+      pulseData.push({
+        venueIndex: 0,
+        progress: 0,
+        speed: 0,
+        direction: 1,
+        active: false,
+      });
+    }
+
+    // Store refs
+    sceneRef.current = {
+      scene,
+      camera,
+      renderer,
+      orbitGroup,
+      wireframeSphere,
+      logo3D,
+      venueGroups,
+      logoSprites,
+      orbitPivots,
+      connectionLines,
+      pulseParticles,
+      pulseData,
+      isScrolling: false,
+    };
+
+    // Mouse interaction
+    const handleMouseMove = (e: MouseEvent) => {
+      mouseRef.current = {
+        x: (e.clientX / window.innerWidth) * 2 - 1,
+        y: -(e.clientY / window.innerHeight) * 2 + 1,
+      };
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+
+    // Animation loop - OPTIMIZED
+    let pulseSpawnTimer = 0;
+
+    const animate = () => {
+      if (!sceneRef.current) return;
+
+      const time = performance.now() * 0.001;
+      const { orbitGroup, wireframeSphere, logo3D, orbitPivots, venueGroups, connectionLines, camera, renderer, pulseParticles, pulseData } = sceneRef.current;
+
+      // Keep animations running during scroll for fluid experience
+      const skipHeavyUpdates = false;
+
+      // Rotate orbit group
+      orbitGroup.rotation.y = time * 0.12;
+
+      // Rotate wireframe
+      wireframeSphere.rotation.y = time * 0.08;
+      wireframeSphere.rotation.x = Math.sin(time * 0.05) * 0.05;
+
+      // Rotate 3D logo
+      if (logo3D) {
+        logo3D.rotation.y = time * 0.25;
+      }
+
+      // Center position for pulses
+      const centerPos = new THREE.Vector3();
+      orbitGroup.getWorldPosition(centerPos);
+
+      // Update venue satellites - basic rotation always happens
+      const wireframeRadius = 2.2;
+      orbitPivots.forEach((pivot, i) => {
+        pivot.rotation.y = time * 0.15 + (i / VENUES.length) * Math.PI * 2;
+      });
+
+      // Update connection lines - skip during scroll for performance
+      if (!skipHeavyUpdates) {
+        orbitPivots.forEach((_, i) => {
+          const venueGroup = venueGroups[i];
+          const connectionLine = connectionLines[i];
+          if (venueGroup && connectionLine) {
+            const satellitePos = new THREE.Vector3();
+            venueGroup.getWorldPosition(satellitePos);
+
+            const direction = satellitePos.clone().sub(centerPos).normalize();
+            const startPoint = centerPos.clone().add(direction.multiplyScalar(wireframeRadius));
+
+            const positions = connectionLine.geometry.attributes.position.array as Float32Array;
+            positions[0] = startPoint.x;
+            positions[1] = startPoint.y;
+            positions[2] = startPoint.z;
+            positions[3] = satellitePos.x;
+            positions[4] = satellitePos.y;
+            positions[5] = satellitePos.z;
+            connectionLine.geometry.attributes.position.needsUpdate = true;
+
+            // Animate opacity for subtle glow pulse
+            const mat = connectionLine.material as THREE.LineBasicMaterial;
+            mat.opacity = 0.5 + Math.sin(time * 2 + i) * 0.25;
+          }
+        });
+      }
+
+      // Spawn new pulses - data flow between center and venues (skip if scrolling)
+      if (!skipHeavyUpdates) {
+        pulseSpawnTimer += 0.016;
+        if (pulseSpawnTimer > 0.2) { // Every 200ms (slower for performance)
+          pulseSpawnTimer = 0;
+
+          // Find inactive pulse
+          const inactivePulse = pulseData.find(p => !p.active);
+          if (inactivePulse) {
+            inactivePulse.venueIndex = Math.floor(Math.random() * VENUES.length);
+            inactivePulse.progress = Math.random() > 0.5 ? 0 : 1;
+            inactivePulse.direction = inactivePulse.progress === 0 ? 1 : -1;
+            inactivePulse.speed = 0.012 + Math.random() * 0.008;
+            inactivePulse.active = true;
+          }
+        }
+      }
+
+      // Update pulse particles - skip during scroll for performance
+      if (pulseParticles && !skipHeavyUpdates) {
+        const positions = pulseParticles.geometry.attributes.position.array as Float32Array;
+        const sizes = pulseParticles.geometry.attributes.size.array as Float32Array;
+        const colors = pulseParticles.geometry.attributes.color.array as Float32Array;
+
+        pulseData.forEach((pulse, i) => {
+          if (pulse.active) {
+            // Update progress
+            pulse.progress += pulse.speed * pulse.direction;
+
+            // Check completion
+            if ((pulse.direction === 1 && pulse.progress >= 1) ||
+                (pulse.direction === -1 && pulse.progress <= 0)) {
+              pulse.active = false;
+              sizes[i] = 0;
+            } else {
+              // Get current satellite world position (follows orbit!)
+              const venueGroup = venueGroups[pulse.venueIndex];
+              const satellitePos = new THREE.Vector3();
+              venueGroup.getWorldPosition(satellitePos);
+
+              // Calculate start point at wireframe edge
+              const direction = satellitePos.clone().sub(centerPos).normalize();
+              const startPoint = centerPos.clone().add(direction.clone().multiplyScalar(wireframeRadius));
+
+              // Interpolate between wireframe edge and satellite
+              const t = pulse.progress;
+              positions[i * 3] = startPoint.x + (satellitePos.x - startPoint.x) * t;
+              positions[i * 3 + 1] = startPoint.y + (satellitePos.y - startPoint.y) * t;
+              positions[i * 3 + 2] = startPoint.z + (satellitePos.z - startPoint.z) * t;
+
+              // Size pulses - NEON GLOW
+              const sizePulse = Math.sin(pulse.progress * Math.PI);
+              sizes[i] = 0.1 + sizePulse * 0.06;
+
+              // Color from venue - BRIGHT for neon
+              const venue = VENUES[pulse.venueIndex];
+              const color = new THREE.Color(venue.logoColor);
+              colors[i * 3] = Math.min(color.r * 1.8, 1.0);
+              colors[i * 3 + 1] = Math.min(color.g * 1.8, 1.0);
+              colors[i * 3 + 2] = Math.min(color.b * 1.8, 1.0);
+            }
+          } else {
+            sizes[i] = 0;
+          }
+        });
+
+        pulseParticles.geometry.attributes.position.needsUpdate = true;
+        pulseParticles.geometry.attributes.size.needsUpdate = true;
+        pulseParticles.geometry.attributes.color.needsUpdate = true;
+      }
+
+      // Mouse parallax - smoother
+      camera.position.x += (mouseRef.current.x * 0.6 - camera.position.x) * 0.03;
+      camera.position.y += (mouseRef.current.y * 0.4 + 0.5 - camera.position.y) * 0.03;
+      camera.lookAt(0, 0, 0);
+
+      renderer.render(sceneRef.current.scene, camera);
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    // Resize handler
+    const handleResize = () => {
+      if (!sceneRef.current || !containerRef.current) return;
+      const { camera, renderer } = sceneRef.current;
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+    window.addEventListener('resize', handleResize);
+
+    // Scroll throttling - reduce quality during scroll
+    let scrollTimeout: NodeJS.Timeout;
+    const handleScroll = () => {
+      if (sceneRef.current) {
+        sceneRef.current.isScrolling = true;
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          if (sceneRef.current) {
+            sceneRef.current.isScrolling = false;
+          }
+        }, 150);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    animate();
+
+    setTimeout(() => {
+      if (loadingRef.current) {
+        loadingRef.current = false;
+        onReady();
+      }
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll);
+      clearTimeout(scrollTimeout);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (sceneRef.current) {
+        sceneRef.current.renderer.dispose();
+        container.removeChild(sceneRef.current.renderer.domElement);
+      }
+    };
+  }, [onReady]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0 z-0"
+      style={{ background: 'radial-gradient(ellipse at center, rgba(10,10,26,0.5) 0%, rgba(3,3,8,0.5) 70%)' }}
+    />
+  );
+};
+
+// ============================================
+// LOADING SPINNER
+// ============================================
+const LoadingSpinner = ({ visible }: { visible: boolean }) => (
+  <div
+    className={`absolute inset-0 flex items-center justify-center z-30 bg-surface-900 transition-opacity duration-1000 ${
+      visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+    }`}
+  >
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-16 h-16 border-4 border-neon-cyan/20 border-t-neon-cyan rounded-full animate-spin" />
+      <span className="text-white/50 text-sm tracking-widest uppercase">Loading Experience</span>
+    </div>
+  </div>
+);
+
+// ============================================
+// FULL PAGE BINARY RAIN BACKGROUND - Cinematic Integration
+// ============================================
+const BinaryRainBackground = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size
+    const setSize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = document.documentElement.scrollHeight;
+    };
+    setSize();
+
+    // Binary characters
+    const chars = '01';
+    const fontSize = 14;
+    const columns = Math.floor(canvas.width / fontSize);
+
+    // Lateral fade margins (columns to fade on each side) - reduced for full coverage
+    const fadeColumns = Math.floor(columns * 0.05); // 5% fade on each side
+
+    // Initialize drops
+    const drops: number[] = [];
+    for (let i = 0; i < columns; i++) {
+      drops[i] = Math.random() * -100;
+    }
+
+    // Animation
+    const draw = () => {
+      // Semi-transparent black to create fade effect
+      ctx.fillStyle = 'rgba(3, 3, 8, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.font = `${fontSize}px monospace`;
+
+      for (let i = 0; i < drops.length; i++) {
+        // Random character
+        const char = chars[Math.floor(Math.random() * chars.length)];
+
+        // Calculate lateral fade (0 at edges, 1 in center)
+        let lateralFade = 1;
+        if (i < fadeColumns) {
+          lateralFade = i / fadeColumns;
+        } else if (i > columns - fadeColumns) {
+          lateralFade = (columns - i) / fadeColumns;
+        }
+
+        // No vertical fade - uniform rain across full height
+        const y = drops[i] * fontSize;
+        const totalFade = lateralFade;
+
+        // Brightness varies - head is brightest, apply fade (increased visibility)
+        const baseBrightness = Math.random() > 0.96 ? 255 : 100 + Math.random() * 100;
+        const brightness = baseBrightness * totalFade;
+
+        if (brightness > 10) { // Only draw if visible
+          ctx.fillStyle = `rgba(0, ${brightness}, ${brightness * 0.4}, ${0.9 * totalFade})`;
+          ctx.fillText(char, i * fontSize, y);
+        }
+
+        // Reset drop when it reaches bottom or randomly
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+          drops[i] = 0;
+        }
+        drops[i] += 0.4 + Math.random() * 0.4; // Slightly slower
+      }
+    };
+
+    const interval = setInterval(draw, 50);
+
+    // Resize handler
+    const handleResize = () => {
+      setSize();
+    };
+    window.addEventListener('resize', handleResize);
+
+    // Scroll handler for vertical fade recalculation
+    const handleScroll = () => {
+      // Canvas redraws automatically, scroll position used in draw()
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    // Observe scroll height changes
+    const resizeObserver = new ResizeObserver(() => {
+      setSize();
+    });
+    resizeObserver.observe(document.body);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+      {/* Binary rain canvas */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ opacity: 0.55 }}
+      />
+
+      {/* Cinematic vignette overlay - more transparent */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `
+            radial-gradient(ellipse 120% 80% at 50% 50%,
+              transparent 35%,
+              rgba(3, 3, 8, 0.25) 70%,
+              rgba(3, 3, 8, 0.6) 100%
+            )
+          `,
+        }}
+      />
+
+      {/* Very subtle lateral fade - minimal to avoid cutting binary rain */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-[3%]"
+        style={{
+          background: 'linear-gradient(to right, rgba(3, 3, 8, 0.2), transparent)',
+        }}
+      />
+      <div
+        className="absolute right-0 top-0 bottom-0 w-[3%]"
+        style={{
+          background: 'linear-gradient(to left, rgba(3, 3, 8, 0.2), transparent)',
+        }}
+      />
+
+      {/* Top/bottom subtle fade */}
+      <div
+        className="absolute top-0 left-0 right-0 h-[8vh]"
+        style={{
+          background: 'linear-gradient(to bottom, rgba(3, 3, 8, 0.3), transparent)',
+        }}
+      />
+      <div
+        className="absolute bottom-0 left-0 right-0 h-[8vh]"
+        style={{
+          background: 'linear-gradient(to top, rgba(3, 3, 8, 0.4), transparent)',
+        }}
+      />
+    </div>
+  );
+};
+
+// ============================================
+// SCROLL INDICATOR
+// ============================================
+const ScrollIndicator = ({ visible }: { visible: boolean }) => (
+  <div
+    className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 transition-all duration-1000 ${
+      visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+    }`}
+  >
+    <div className="flex flex-col items-center gap-1 text-white/40">
+      <span className="text-[10px] tracking-widest uppercase">Scroll</span>
+      <ChevronDown className="w-4 h-4 animate-bounce" />
+    </div>
+  </div>
+);
+
+// ============================================
+// GLASS PANEL
+// ============================================
+const GlassPanel = ({
+  children,
+  className = '',
+  delay = 0,
+  visible = true
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+  visible?: boolean;
+}) => (
+  <div
+    className={`
+      backdrop-blur-xl rounded-2xl border border-white/10
+      bg-gradient-to-br from-white/[0.08] to-white/[0.02]
+      shadow-[0_8px_32px_rgba(0,0,0,0.4)]
+      transition-all duration-700 ease-out
+      ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}
+      ${className}
+    `}
+    style={{ transitionDelay: `${delay}ms` }}
+  >
+    {children}
+  </div>
+);
+
+// ============================================
+// SCROLL REVEAL SECTION
+// ============================================
+const ScrollReveal = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
+      },
+      { threshold: 0.1, rootMargin: '50px' }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`transition-all duration-1000 ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+};
+
+// ============================================
+// MAIN LANDING PAGE
+// ============================================
+export default function LandingPage() {
+  const [loading, setLoading] = useState(true);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [userInteracted, setUserInteracted] = useState(false);
+  const [showUI, setShowUI] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const featuredArticles = articles.slice(0, 3);
+
+  const handleSceneReady = useCallback(() => {
+    setLoading(false);
+    setTimeout(() => setSceneReady(true), 300);
+  }, []);
+
+  useEffect(() => {
+    let interactionTimeout: NodeJS.Timeout;
+
+    const handleInteraction = () => {
+      if (!userInteracted && sceneReady) {
+        setUserInteracted(true);
+        interactionTimeout = setTimeout(() => setShowUI(true), 200);
+      }
+    };
+
+    const handleScroll = () => {
+      handleInteraction();
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (Math.abs(e.movementX) > 20 || Math.abs(e.movementY) > 20) {
+        handleInteraction();
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('touchstart', handleInteraction);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchstart', handleInteraction);
+      clearTimeout(interactionTimeout);
+    };
+  }, [userInteracted, sceneReady]);
+
+  const features = [
+    { icon: Activity, title: 'Real-Time Scanning', description: 'WebSocket feeds from 5 DEX venues with sub-second updates.', color: '#00d4ff' },
+    { icon: Shield, title: 'Delta-Neutral', description: 'Hedge positions across venues. Profit from spreads, not direction.', color: '#00ff9f' },
+    { icon: Target, title: 'Self-Custody', description: 'Trade on DEXs only. Your keys, your funds. Zero counterparty risk.', color: '#ff00ff' },
+  ];
+
+  const stats = [
+    { label: 'Venues', value: '5', icon: Layers },
+    { label: 'Markets', value: '500+', icon: BarChart3 },
+    { label: 'Max APR', value: '150%+', icon: Percent },
+    { label: 'Updates', value: 'Live', icon: Clock },
+  ];
+
+  return (
+    <div ref={containerRef} className="relative bg-[#030308]">
+      {/* FULL PAGE BINARY RAIN BACKGROUND */}
+      <BinaryRainBackground />
+
+      <LoadingSpinner visible={loading} />
+
+      {/* ============ HERO - FULL WIDTH IMMERSIVE ============ */}
+      <section className="relative h-screen w-full overflow-hidden">
+        <OrbitalScene onReady={handleSceneReady} />
+        <ScrollIndicator visible={sceneReady && !userInteracted} />
+
+        {/* Nav - minimal padding */}
+        <nav
+          className={`absolute top-0 left-0 right-0 z-20 px-4 py-4 transition-all duration-700 ${
+            showUI ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6'
+          }`}
+        >
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <Link to="/" className="flex items-center">
+              <img src="/logo-54sd-mini.png" alt="54SD" className="h-8 w-auto" />
+            </Link>
+            <div className="flex items-center gap-4">
+              <Link to="/scanner" className="text-white/60 hover:text-white transition-colors text-sm">
+                Scanner
+              </Link>
+              <Link to="/insights" className="text-white/60 hover:text-white transition-colors text-sm">
+                Insights
+              </Link>
+              <Link
+                to="/scanner"
+                className="px-3 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white text-sm hover:bg-white/20 transition-all"
+              >
+                Launch
+              </Link>
+            </div>
+          </div>
+        </nav>
+
+        {/* Hero content - positioned to left, less margins */}
+        <div
+          className={`absolute inset-0 flex items-center z-10 px-4 transition-all duration-700 ${
+            showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          <div className="max-w-7xl mx-auto w-full">
+            <div className="max-w-lg">
+              <GlassPanel className="p-6" visible={showUI} delay={200}>
+                <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-neon-green/10 border border-neon-green/30 mb-4">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-green opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-neon-green"></span>
+                  </span>
+                  <span className="text-xs text-neon-green">Live</span>
+                </div>
+
+                <h2 className="text-3xl md:text-4xl font-bold font-display text-white mb-3 leading-tight">
+                  Funding Rate{' '}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-cyan to-neon-green">
+                    Arbitrage
+                  </span>
+                </h2>
+
+                <p className="text-sm text-white/50 mb-5 leading-relaxed">
+                  Find delta-neutral opportunities with APRs from 20% to 150%+.
+                  Real-time scanning across 5 DEX venues.
+                </p>
+
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    to="/scanner"
+                    className="group inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-neon-cyan to-neon-green text-surface-900 text-sm font-semibold hover:shadow-[0_0_20px_rgba(0,255,159,0.3)] transition-all"
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    Scanner
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                  </Link>
+                  <Link
+                    to="/insights/what-is-funding-rate-arbitrage"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/20 text-white text-sm hover:bg-white/10 transition-all"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    Learn
+                  </Link>
+                </div>
+              </GlassPanel>
+
+              {/* Stats - compact */}
+              <div
+                className={`grid grid-cols-4 gap-2 mt-4 transition-all duration-700 ${
+                  showUI ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+                }`}
+                style={{ transitionDelay: '400ms' }}
+              >
+                {stats.map((stat, i) => {
+                  const Icon = stat.icon;
+                  return (
+                    <div key={i} className="text-center p-2 rounded-xl bg-white/5 backdrop-blur border border-white/10">
+                      <Icon className="w-3 h-3 mx-auto mb-1 text-neon-cyan/60" />
+                      <div className="text-sm font-bold font-mono text-white">{stat.value}</div>
+                      <div className="text-[10px] text-white/40">{stat.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Subtle gradient at bottom - doesn't block binary rain */}
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-surface-900/50 to-transparent z-5 pointer-events-none" />
+      </section>
+
+      {/* ============ FEATURES ============ */}
+      <section className="relative py-16 px-4 overflow-hidden">
+        {/* Transparent overlay - binary rain shows through */}
+        <div className="absolute inset-0 bg-surface-900/40 backdrop-blur-sm" />
+        <div className="relative z-10 max-w-5xl mx-auto">
+          <ScrollReveal>
+            <div className="text-center mb-10">
+              <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-2">
+                Why <span className="text-neon-cyan">54SD</span>?
+              </h2>
+              <p className="text-white/40 text-sm max-w-md mx-auto">
+                Professional tools for funding rate arbitrage across DEXs.
+              </p>
+            </div>
+          </ScrollReveal>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            {features.map((feature, i) => {
+              const Icon = feature.icon;
+              return (
+                <ScrollReveal key={i}>
+                  <GlassPanel className="p-5 h-full hover:scale-[1.02] hover:border-white/20 transition-transform group">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+                      style={{ background: `${feature.color}15`, boxShadow: `0 0 20px ${feature.color}10` }}
+                    >
+                      <Icon className="w-5 h-5" style={{ color: feature.color }} />
+                    </div>
+                    <h3 className="text-base font-bold text-white mb-2">{feature.title}</h3>
+                    <p className="text-white/40 text-sm">{feature.description}</p>
+                  </GlassPanel>
+                </ScrollReveal>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ============ VENUES ============ */}
+      <section className="relative py-16 px-4 overflow-hidden">
+        {/* Semi-transparent gradient - binary rain shows through */}
+        <div className="absolute inset-0 bg-gradient-to-b from-surface-900/30 to-transparent" />
+        <div className="relative z-10 max-w-5xl mx-auto">
+          <ScrollReveal>
+            <div className="text-center mb-10">
+              <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-2">
+                <span className="text-neon-cyan">5 Venues</span>, One Dashboard
+              </h2>
+              <p className="text-white/40 text-sm">Aggregate rates from leading DEXs.</p>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal>
+            <div className="flex flex-wrap justify-center gap-3">
+              {VENUES.map((venue) => (
+                <div
+                  key={venue.id}
+                  className="group px-4 py-2 rounded-xl backdrop-blur border transition-all duration-300 hover:scale-105"
+                  style={{
+                    background: `linear-gradient(135deg, ${venue.glowColor.replace('0.6', '0.1')}, transparent)`,
+                    borderColor: venue.glowColor.replace('0.6', '0.25'),
+                  }}
+                >
+                  <span className="text-sm font-medium" style={{ color: venue.glowColor.replace('0.6', '1') }}>
+                    {venue.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal className="mt-8 text-center">
+            <Link to="/scanner" className="inline-flex items-center gap-2 text-neon-cyan hover:text-neon-green transition-colors text-sm">
+              View Live Rates <ExternalLink className="w-3 h-3" />
+            </Link>
+          </ScrollReveal>
+        </div>
+      </section>
+
+      {/* ============ ARTICLES ============ */}
+      <section className="relative py-16 px-4 overflow-hidden">
+        {/* Transparent overlay - binary rain shows through */}
+        <div className="absolute inset-0 bg-surface-900/40 backdrop-blur-sm" />
+        <div className="relative z-10 max-w-5xl mx-auto">
+          <ScrollReveal>
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold font-display text-white mb-1">Learn Funding Arbitrage</h2>
+                <p className="text-white/40 text-sm">Guides for delta-neutral strategies</p>
+              </div>
+              <Link to="/insights" className="hidden md:flex items-center gap-1 text-neon-cyan hover:text-neon-green text-sm">
+                All <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </ScrollReveal>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            {featuredArticles.map((article) => (
+              <ScrollReveal key={article.id}>
+                <Link to={`/insights/${article.slug}`} className="group block h-full">
+                  <GlassPanel className="p-4 h-full hover:border-neon-cyan/30 group-hover:-translate-y-1 transition-transform">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-neon-cyan/10 text-neon-cyan">
+                        {article.category}
+                      </span>
+                      <span className="flex items-center text-[10px] text-white/30">
+                        <Clock className="w-2.5 h-2.5 mr-0.5" />
+                        {article.readTime}m
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-white mb-1 group-hover:text-neon-cyan transition-colors line-clamp-2">
+                      {article.title}
+                    </h3>
+                    <p className="text-xs text-white/30 line-clamp-2">{article.excerpt}</p>
+                  </GlassPanel>
+                </Link>
+              </ScrollReveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============ CTA ============ */}
+      <section className="relative py-16 px-4 overflow-hidden">
+        {/* Semi-transparent gradient - binary rain shows through */}
+        <div className="absolute inset-0 bg-gradient-to-b from-surface-900/30 to-transparent" />
+        <div className="relative z-10 max-w-3xl mx-auto">
+          <ScrollReveal>
+            <GlassPanel className="p-8 text-center relative overflow-hidden">
+              <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+                <div
+                  className="absolute inset-[-2px] opacity-20"
+                  style={{
+                    background: 'linear-gradient(90deg, #00d4ff, #00ff9f, #ff00ff, #00d4ff)',
+                    backgroundSize: '300% 100%',
+                    animation: 'gradient-x 4s linear infinite',
+                  }}
+                />
+              </div>
+
+              <BarChart3 className="w-10 h-10 mx-auto mb-4 text-neon-cyan" />
+              <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-3">
+                Ready to Find Opportunities?
+              </h2>
+              <p className="text-white/40 text-sm mb-6 max-w-md mx-auto">
+                Scan real-time funding rates across 5 DEX venues.
+              </p>
+              <Link
+                to="/scanner"
+                className="group inline-flex items-center gap-2 px-6 py-3 rounded-full bg-gradient-to-r from-neon-cyan to-neon-green text-surface-900 font-bold hover:shadow-[0_0_30px_rgba(0,255,159,0.4)] transition-all"
+              >
+                <TrendingUp className="w-5 h-5" />
+                Launch Scanner
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </GlassPanel>
+          </ScrollReveal>
+        </div>
+      </section>
+
+      {/* ============ DISCLAIMER ============ */}
+      <section className="relative py-8 px-4">
+        <div className="max-w-3xl mx-auto relative z-10">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-yellow-500/10 backdrop-blur-sm border border-yellow-500/20">
+            <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-semibold text-white mb-1">Educational Purpose Only</h3>
+              <p className="text-xs text-white/40 leading-relaxed">
+                This site is for educational purposes only. Trading perpetual futures involves significant risk.
+                Always do your own research. Never trade with money you cannot afford to lose.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
