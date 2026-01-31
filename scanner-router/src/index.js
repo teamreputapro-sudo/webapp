@@ -6,7 +6,7 @@ export default {
       return fetch(req);
     }
 
-    const PAGES_ORIGIN = "https://TU_PROYECTO.pages.dev";
+    const PAGES_ORIGIN = "https://68d331af.webapp-cwo.pages.dev";
 
     let p = url.pathname.replace(/^\/scanner/, "");
     if (p === "" || p === "/") p = "/index.html";
