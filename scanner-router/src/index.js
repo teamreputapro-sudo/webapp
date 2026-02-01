@@ -6,11 +6,12 @@ export default {
 
     const PAGES_ORIGIN = "https://810bca5a.webapp-cwo.pages.dev";
 
+    const isAssetsPath = url.pathname.startsWith("/scanner/assets/");
     let p = url.pathname.replace(/^\/scanner/, "");
     if (p === "" || p === "/") p = "/";
 
     const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(p);
-    if (!looksLikeFile) p = "/";
+    if (!isAssetsPath && !looksLikeFile) p = "/";
 
     const target = new URL(PAGES_ORIGIN);
     target.pathname = p;
@@ -22,10 +23,13 @@ export default {
       redirect: "follow",
     });
 
-    const res = await fetch(proxiedReq);
-    const h = new Headers(res.headers);
+    const resp = await fetch(proxiedReq);
+    const h = new Headers(resp.headers);
     h.set("x-scanner-worker", "1");
+    if (isAssetsPath) {
+      h.set("Cache-Control", "public, max-age=31536000, immutable");
+    }
 
-    return new Response(res.body, { status: res.status, headers: h });
+    return new Response(resp.body, { status: resp.status, headers: h });
   }
 };
