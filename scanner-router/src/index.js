@@ -4,7 +4,7 @@ export default {
 
     if (!url.pathname.startsWith("/scanner")) return fetch(req);
 
-    const PAGES_ORIGIN = "https://d9b616e8.webapp-cwo.pages.dev/";
+    const PAGES_ORIGIN = "https://4cbb876c.webapp-cwo.pages.dev/";
 
     const isAssetsPath = url.pathname.startsWith("/scanner/assets/");
     let p = url.pathname.replace(/^\/scanner/, "");
