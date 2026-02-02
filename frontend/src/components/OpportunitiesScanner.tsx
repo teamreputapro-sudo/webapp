@@ -10,10 +10,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { AlertCircle, Search, ArrowUpRight, Trophy, Clock, Calendar, CalendarDays, ChevronLeft, ChevronRight, TrendingUp, Calculator, BarChart3, Zap, Info, Flame, ArrowUp, ArrowDown } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
-import { getScannerDetailPath } from '../lib/routerBase';
 
 // Available venues (lowercase to match API response)
 const ALL_VENUES = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational'];
@@ -126,9 +125,7 @@ export default function OpportunitiesScanner() {
   // HIP-3 filter: 'all' shows everything, 'crypto' hides HIP-3, 'hip3' shows only HIP-3
   const [hip3Filter, setHip3Filter] = useState<'all' | 'crypto' | 'hip3'>('all');
   const [hip3FilterDraft, setHip3FilterDraft] = useState<'all' | 'crypto' | 'hip3'>('all');
-  const navigate = useNavigate();
-
-  const openDetail = (symbol: string, opportunity: Opportunity) => {
+  const openDetail = (symbol: string) => {
     const url = `${window.location.origin}/scanner/s/${encodeURIComponent(symbol)}`;
     const win = window.open(url, '_blank', 'noopener,noreferrer');
     if (!win) {
@@ -361,7 +358,7 @@ export default function OpportunitiesScanner() {
                         o.exchange_long === performer.exchange_long
                       );
                       if (opp) {
-                        openDetail(opp.symbol, opp);
+                        openDetail(opp.symbol);
                       }
                     }}
                   >
@@ -581,7 +578,7 @@ export default function OpportunitiesScanner() {
             }`}
             style={{ animationDelay: `${(index % 10) * 40}ms` }}
             onClick={() => {
-              openDetail(opp.symbol, opp);
+              openDetail(opp.symbol);
             }}
           >
             <div className="flex flex-col lg:flex-row lg:items-center gap-5">
