@@ -27,6 +27,7 @@ interface SymbolDetailModalProps {
   symbol: string;
   opportunity?: OpportunityLike;
   onClose: () => void;
+  mode?: 'modal' | 'page';
 }
 
 // Interfaces matching backend responses
@@ -103,7 +104,7 @@ const getCacheKey = (
   return `${symbol}|${timeframe}|${venues.short}|${venues.long}|${venues.dexShort || ''}|${venues.dexLong || ''}`;
 };
 
-export default function SymbolDetailModal({ symbol, opportunity, onClose }: SymbolDetailModalProps) {
+export default function SymbolDetailModal({ symbol, opportunity, onClose, mode = 'modal' }: SymbolDetailModalProps) {
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '15d' | '31d'>('24h');
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [exchangeInfo, setExchangeInfo] = useState<ExchangeInfo[]>([]);
@@ -367,9 +368,17 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
     return { label: 'High OI', color: 'text-gray-400' };
   };
 
+  const wrapperClass = mode === 'modal'
+    ? 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
+    : 'min-h-screen bg-gray-900 flex items-start justify-center py-8 px-4';
+
+  const panelClass = mode === 'modal'
+    ? 'bg-gray-900 rounded-xl max-w-7xl w-full max-h-[90vh] overflow-y-auto'
+    : 'bg-gray-900 rounded-xl max-w-7xl w-full overflow-y-visible';
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-xl max-w-7xl w-full max-h-[90vh] overflow-y-auto">
+    <div className={wrapperClass}>
+      <div className={panelClass}>
         {/* Header */}
         <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 flex items-center justify-between z-10">
           <div>

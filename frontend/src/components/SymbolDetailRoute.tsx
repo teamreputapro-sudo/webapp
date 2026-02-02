@@ -49,6 +49,7 @@ export default function SymbolDetailRoute() {
         symbol={symbol}
         opportunity={state.opportunity}
         onClose={() => navigate(getScannerPath())}
+        mode="page"
       />
     </Suspense>
   );
