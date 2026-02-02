@@ -721,10 +721,10 @@ export default function App() {
   const scannerPath = getScannerPath();
   const landingPath = getLandingPath();
   const navigation = [
+    { path: landingPath, name: 'Home', icon: Home, description: 'Funding rate arbitrage overview' },
     { path: scannerPath, name: 'Scanner', icon: TrendingUp, description: 'Find arbitrage opportunities' },
     { path: '/chart', name: 'Live Chart', icon: LineChart, description: 'Real-time price charts' },
     { path: '/insights', name: 'Insights', icon: BookOpen, description: 'Learn about funding arbitrage' },
-    { path: landingPath, name: 'Home', icon: Home, description: 'Funding rate arbitrage overview' },
   ];
 
   const currentNav = navigation.find(n => n.path === location.pathname) || navigation[0];
