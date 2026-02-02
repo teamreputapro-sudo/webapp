@@ -132,7 +132,7 @@ export default function OpportunitiesScanner() {
     const url = `${window.location.origin}/scanner/s/${encodeURIComponent(symbol)}`;
     const win = window.open(url, '_blank', 'noopener,noreferrer');
     if (!win) {
-      navigate(getScannerDetailPath(symbol), { state: { opportunity } });
+      console.warn('Popup blocked. Please allow popups to open symbol detail.');
     }
   };
 
