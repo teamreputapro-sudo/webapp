@@ -2348,7 +2348,7 @@ export default function LandingPage() {
               <img src={withBase('logo-54sd-mini.png')} alt="54SD" className="h-8 w-auto" />
             </Link>
             <div className="flex items-center gap-4">
-              <Link to={getScannerPath()} className="text-white/60 hover:text-white transition-colors text-sm">
+              <Link to={getScannerPath()} reloadDocument className="text-white/60 hover:text-white transition-colors text-sm">
                 Scanner
               </Link>
               <Link to="/insights" className="text-white/60 hover:text-white transition-colors text-sm">
@@ -2356,6 +2356,7 @@ export default function LandingPage() {
               </Link>
               <Link
                 to={getScannerPath()}
+                reloadDocument
                 className="px-3 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white text-sm hover:bg-white/20 transition-all"
               >
                 Launch
@@ -2396,6 +2397,7 @@ export default function LandingPage() {
                 <div className="flex flex-wrap gap-3">
                   <Link
                     to={getScannerPath()}
+                    reloadDocument
                     className="group inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-neon-cyan to-neon-green text-surface-900 text-sm font-semibold hover:shadow-[0_0_20px_rgba(0,255,159,0.3)] transition-all"
                   >
                     <TrendingUp className="w-4 h-4" />
@@ -2599,6 +2601,7 @@ export default function LandingPage() {
                   {/* CTA */}
                   <Link
                     to={getScannerPath()}
+                    reloadDocument
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan text-sm font-medium hover:bg-neon-cyan/20 transition-colors group/btn"
                   >
                     <Zap className="w-4 h-4" />

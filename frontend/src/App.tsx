@@ -782,6 +782,7 @@ export default function App() {
                   <Link
                     key={item.path}
                     to={item.path}
+                    reloadDocument={item.path === scannerPath && !isScannerMode()}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium font-display transition-all duration-200 ${
                       isActive
                         ? 'bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-neon-cyan shadow-sm dark:shadow-neon-cyan/10'
