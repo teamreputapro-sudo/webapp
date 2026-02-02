@@ -128,6 +128,14 @@ export default function OpportunitiesScanner() {
   const [hip3FilterDraft, setHip3FilterDraft] = useState<'all' | 'crypto' | 'hip3'>('all');
   const navigate = useNavigate();
 
+  const openDetail = (symbol: string, opportunity: Opportunity) => {
+    const url = getScannerDetailPath(symbol);
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      navigate(url, { state: { opportunity } });
+    }
+  };
+
   // Helper to check if a symbol is recently listed (insufficient historical data)
   const isRecentlyListed = (opp: Opportunity): boolean => {
     return (opp.samples_7d || 0) < MIN_SAMPLES_7D;
@@ -353,7 +361,7 @@ export default function OpportunitiesScanner() {
                         o.exchange_long === performer.exchange_long
                       );
                       if (opp) {
-                        navigate(getScannerDetailPath(opp.symbol), { state: { opportunity: opp } });
+                        openDetail(opp.symbol, opp);
                       }
                     }}
                   >
@@ -573,7 +581,7 @@ export default function OpportunitiesScanner() {
             }`}
             style={{ animationDelay: `${(index % 10) * 40}ms` }}
             onClick={() => {
-              navigate(getScannerDetailPath(opp.symbol), { state: { opportunity: opp } });
+              openDetail(opp.symbol, opp);
             }}
           >
             <div className="flex flex-col lg:flex-row lg:items-center gap-5">
