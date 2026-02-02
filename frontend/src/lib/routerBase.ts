@@ -17,3 +17,11 @@ export const getScannerPath = (): string => (isScannerMode() ? '/' : '/scanner')
 export const getLandingPath = (): string => (isScannerMode() ? '/home' : '/');
 export const getMainPaths = (): string[] =>
   isScannerMode() ? ['/', '/chart', '/insights'] : ['/scanner', '/chart', '/insights'];
+
+export const getScannerDetailRoute = (): string =>
+  isScannerMode() ? '/s/:symbol' : '/scanner/s/:symbol';
+
+export const getScannerDetailPath = (symbol: string): string => {
+  const base = isScannerMode() ? '/s' : '/scanner/s';
+  return `${base}/${encodeURIComponent(symbol)}`;
+};

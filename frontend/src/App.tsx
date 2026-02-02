@@ -19,9 +19,10 @@ import ArticlePage from './components/ArticlePage';
 import AdBanner from './components/AdBanner';
 import SEO from './components/SEO';
 import LandingPage from './components/LandingPage';
+import SymbolDetailRoute from './components/SymbolDetailRoute';
 import { api } from './services/api';
 import { withBase } from './lib/assetBase';
-import { getLandingPath, getMainPaths, getScannerPath, isScannerMode } from './lib/routerBase';
+import { getLandingPath, getMainPaths, getScannerDetailRoute, getScannerPath, isScannerMode } from './lib/routerBase';
 
 // Dark mode hook
 function useDarkMode() {
@@ -913,12 +914,14 @@ export default function App() {
           {isScannerMode() ? (
             <>
               <Route path="/" element={<OpportunitiesScanner />} />
+              <Route path={getScannerDetailRoute()} element={<SymbolDetailRoute />} />
               <Route path="/home" element={<LandingPage />} />
             </>
           ) : (
             <>
               <Route path="/" element={<LandingPage />} />
               <Route path="/scanner" element={<OpportunitiesScanner />} />
+              <Route path={getScannerDetailRoute()} element={<SymbolDetailRoute />} />
             </>
           )}
           <Route path="/chart" element={<LiveTradingChart />} />

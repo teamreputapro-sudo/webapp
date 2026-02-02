@@ -77,6 +77,32 @@ interface SymbolStats {
   samples: number;
 }
 
+type CacheEntry = {
+  ts: number;
+  historicalData: HistoricalData[];
+  exchangeInfo: ExchangeInfo[];
+  liveSnapshot: LiveSnapshot | null;
+  symbolStats: SymbolStats[];
+  selectedVenues?: {
+    short: string;
+    long: string;
+    dexShort?: string | null;
+    dexLong?: string | null;
+  } | null;
+};
+
+const DETAIL_CACHE = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 120 * 1000;
+
+const getCacheKey = (
+  symbol: string,
+  timeframe: string,
+  venues: { short: string; long: string; dexShort?: string | null; dexLong?: string | null } | null
+): string => {
+  if (!venues) return `${symbol}|${timeframe}|_all`;
+  return `${symbol}|${timeframe}|${venues.short}|${venues.long}|${venues.dexShort || ''}|${venues.dexLong || ''}`;
+};
+
 export default function SymbolDetailModal({ symbol, opportunity, onClose }: SymbolDetailModalProps) {
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '15d' | '31d'>('24h');
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
@@ -115,6 +141,20 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
   }, [symbol, timeframe, selectedVenues]);
 
   const fetchSymbolData = async () => {
+    const cacheKey = getCacheKey(symbol, timeframe, selectedVenues);
+    const cached = DETAIL_CACHE.get(cacheKey);
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      setHistoricalData(cached.historicalData);
+      setExchangeInfo(cached.exchangeInfo);
+      setLiveSnapshot(cached.liveSnapshot);
+      setSymbolStats(cached.symbolStats);
+      if (!selectedVenues && cached.selectedVenues) {
+        setSelectedVenues(cached.selectedVenues);
+      }
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       // Build history URL with optional venue params for fixed spread calculation
@@ -162,14 +202,16 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
       ]);
 
       // Process historical data
-        if (historyRes.status === 'fulfilled' && historyRes.value.data) {
-          setHistoricalData(historyRes.value.data);
-          // Auto-select venues from first data point
-          if (historyRes.value.data.length > 0 && !selectedVenues) {
-            const first = historyRes.value.data[0];
-            setSelectedVenues({ short: first.venue_short, long: first.venue_long });
-          }
+      let nextSelectedVenues = selectedVenues;
+      if (historyRes.status === 'fulfilled' && historyRes.value.data) {
+        setHistoricalData(historyRes.value.data);
+        // Auto-select venues from first data point
+        if (historyRes.value.data.length > 0 && !selectedVenues) {
+          const first = historyRes.value.data[0];
+          nextSelectedVenues = { short: first.venue_short, long: first.venue_long };
+          setSelectedVenues(nextSelectedVenues);
         }
+      }
 
       // Process exchange info
       if (exchangesRes.status === 'fulfilled' && exchangesRes.value.data) {
@@ -186,6 +228,14 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
         setSymbolStats(statsRes.value.data);
       }
 
+      DETAIL_CACHE.set(cacheKey, {
+        ts: Date.now(),
+        historicalData: historyRes.status === 'fulfilled' && historyRes.value.data ? historyRes.value.data : [],
+        exchangeInfo: exchangesRes.status === 'fulfilled' && exchangesRes.value.data ? exchangesRes.value.data : [],
+        liveSnapshot: snapshotRes.status === 'fulfilled' && snapshotRes.value.data ? snapshotRes.value.data : null,
+        symbolStats: statsRes.status === 'fulfilled' && statsRes.value.data ? statsRes.value.data : [],
+        selectedVenues: nextSelectedVenues || undefined,
+      });
     } catch (error) {
       console.error('Error fetching symbol data:', error);
     } finally {

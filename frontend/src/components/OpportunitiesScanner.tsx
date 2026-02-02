@@ -10,10 +10,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { AlertCircle, Search, ArrowUpRight, Trophy, Clock, Calendar, CalendarDays, ChevronLeft, ChevronRight, TrendingUp, Calculator, BarChart3, Zap, Info, Flame, ArrowUp, ArrowDown } from 'lucide-react';
-import SymbolDetailModal from './SymbolDetailModal';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
+import { getScannerDetailPath } from '../lib/routerBase';
 
 // Available venues (lowercase to match API response)
 const ALL_VENUES = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational'];
@@ -113,8 +113,6 @@ export default function OpportunitiesScanner() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedVenues, setSelectedVenues] = useState<Set<string>>(new Set(ALL_VENUES));
@@ -128,6 +126,7 @@ export default function OpportunitiesScanner() {
   // HIP-3 filter: 'all' shows everything, 'crypto' hides HIP-3, 'hip3' shows only HIP-3
   const [hip3Filter, setHip3Filter] = useState<'all' | 'crypto' | 'hip3'>('all');
   const [hip3FilterDraft, setHip3FilterDraft] = useState<'all' | 'crypto' | 'hip3'>('all');
+  const navigate = useNavigate();
 
   // Helper to check if a symbol is recently listed (insufficient historical data)
   const isRecentlyListed = (opp: Opportunity): boolean => {
@@ -354,8 +353,7 @@ export default function OpportunitiesScanner() {
                         o.exchange_long === performer.exchange_long
                       );
                       if (opp) {
-                        setSelectedSymbol(opp.symbol);
-                        setSelectedOpportunity(opp);
+                        navigate(getScannerDetailPath(opp.symbol), { state: { opportunity: opp } });
                       }
                     }}
                   >
@@ -575,8 +573,7 @@ export default function OpportunitiesScanner() {
             }`}
             style={{ animationDelay: `${(index % 10) * 40}ms` }}
             onClick={() => {
-              setSelectedSymbol(opp.symbol);
-              setSelectedOpportunity(opp);
+              navigate(getScannerDetailPath(opp.symbol), { state: { opportunity: opp } });
             }}
           >
             <div className="flex flex-col lg:flex-row lg:items-center gap-5">
@@ -859,17 +856,6 @@ export default function OpportunitiesScanner() {
         </div>
       )}
 
-      {/* Symbol Detail Modal */}
-      {selectedSymbol && (
-        <SymbolDetailModal
-          symbol={selectedSymbol}
-          opportunity={selectedOpportunity || undefined}
-          onClose={() => {
-            setSelectedSymbol(null);
-            setSelectedOpportunity(null);
-          }}
-        />
-      )}
     </div>
   );
 }
