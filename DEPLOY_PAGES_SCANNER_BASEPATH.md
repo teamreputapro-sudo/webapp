@@ -20,6 +20,9 @@
 - Vite uses `VITE_BASE_PATH=/scanner/` to set `base: "/scanner/"`.
 - React Router uses `basename` derived from `import.meta.env.BASE_URL`.
 - Static assets are referenced via `import.meta.env.BASE_URL` so they resolve under `/scanner/`.
+- Symbol detail uses a dedicated route: `/scanner/s/:symbol` and opens in a **new tab**.
+- Detail links include venue hints so backend calls stay consistent:
+  `?venue_short=...&venue_long=...&dex_name_short=...&dex_name_long=...`
 
 ## Cache Headers (Pages)
 

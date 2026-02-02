@@ -31,11 +31,33 @@ export default function SymbolDetailRoute() {
   const navigate = useNavigate();
   const location = useLocation();
   const state = (location.state || {}) as LocationState;
+  const searchParams = new URLSearchParams(location.search);
+  const venueShort = searchParams.get('venue_short') || undefined;
+  const venueLong = searchParams.get('venue_long') || undefined;
+  const dexShort = searchParams.get('dex_name_short') || undefined;
+  const dexLong = searchParams.get('dex_name_long') || undefined;
 
   if (!symbol) {
     navigate(getScannerPath(), { replace: true });
     return null;
   }
+
+  const opportunity: OpportunityLike | undefined = (() => {
+    const base = state.opportunity ? { ...state.opportunity } : { symbol };
+    if (venueShort && !base.exchange_short && !base.short_exchange) {
+      base.exchange_short = venueShort;
+    }
+    if (venueLong && !base.exchange_long && !base.long_exchange) {
+      base.exchange_long = venueLong;
+    }
+    if (dexShort && !base.dex_name_short) {
+      base.dex_name_short = dexShort;
+    }
+    if (dexLong && !base.dex_name_long) {
+      base.dex_name_long = dexLong;
+    }
+    return base;
+  })();
 
   return (
     <Suspense
@@ -47,7 +69,7 @@ export default function SymbolDetailRoute() {
     >
       <SymbolDetailModal
         symbol={symbol}
-        opportunity={state.opportunity}
+        opportunity={opportunity}
         onClose={() => navigate(getScannerPath())}
         mode="page"
       />

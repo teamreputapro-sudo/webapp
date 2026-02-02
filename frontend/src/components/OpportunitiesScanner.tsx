@@ -8,7 +8,7 @@
  * - Integrated action previews
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type MouseEvent } from 'react';
 import { AlertCircle, Search, ArrowUpRight, Trophy, Clock, Calendar, CalendarDays, ChevronLeft, ChevronRight, TrendingUp, Calculator, BarChart3, Zap, Info, Flame, ArrowUp, ArrowDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
@@ -125,8 +125,20 @@ export default function OpportunitiesScanner() {
   // HIP-3 filter: 'all' shows everything, 'crypto' hides HIP-3, 'hip3' shows only HIP-3
   const [hip3Filter, setHip3Filter] = useState<'all' | 'crypto' | 'hip3'>('all');
   const [hip3FilterDraft, setHip3FilterDraft] = useState<'all' | 'crypto' | 'hip3'>('all');
-  const openDetail = (symbol: string) => {
-    const url = `${window.location.origin}/scanner/s/${encodeURIComponent(symbol)}`;
+  const buildDetailUrl = (opp: Opportunity) => {
+    const params = new URLSearchParams();
+    if (opp.exchange_short) params.set('venue_short', opp.exchange_short);
+    if (opp.exchange_long) params.set('venue_long', opp.exchange_long);
+    if (opp.dex_name_short) params.set('dex_name_short', opp.dex_name_short);
+    if (opp.dex_name_long) params.set('dex_name_long', opp.dex_name_long);
+    const qs = params.toString();
+    return `${window.location.origin}/scanner/s/${encodeURIComponent(opp.symbol)}${qs ? `?${qs}` : ''}`;
+  };
+
+  const openDetail = (opp: Opportunity, event?: MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const url = buildDetailUrl(opp);
     const win = window.open(url, '_blank', 'noopener,noreferrer');
     if (!win) {
       console.warn('Popup blocked. Please allow popups to open symbol detail.');
@@ -351,14 +363,14 @@ export default function OpportunitiesScanner() {
                   <div
                     key={`${performer.symbol}-${performer.exchange_short}-${performer.exchange_long}`}
                     className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-surface-800 hover:bg-gray-100 dark:hover:bg-surface-700 cursor-pointer transition-colors"
-                    onClick={() => {
+                    onClick={(event) => {
                       const opp = opportunities.find(o =>
                         o.symbol === performer.symbol &&
                         o.exchange_short === performer.exchange_short &&
                         o.exchange_long === performer.exchange_long
                       );
                       if (opp) {
-                        openDetail(opp.symbol);
+                        openDetail(opp, event);
                       }
                     }}
                   >
@@ -577,8 +589,8 @@ export default function OpportunitiesScanner() {
               opp.net_apr < 0 ? 'border-red-200/50 dark:border-red-500/20' : ''
             }`}
             style={{ animationDelay: `${(index % 10) * 40}ms` }}
-            onClick={() => {
-              openDetail(opp.symbol);
+            onClick={(event) => {
+              openDetail(opp, event);
             }}
           >
             <div className="flex flex-col lg:flex-row lg:items-center gap-5">
