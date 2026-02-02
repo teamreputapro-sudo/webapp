@@ -129,10 +129,10 @@ export default function OpportunitiesScanner() {
   const navigate = useNavigate();
 
   const openDetail = (symbol: string, opportunity: Opportunity) => {
-    const url = getScannerDetailPath(symbol);
+    const url = `${window.location.origin}/scanner/s/${encodeURIComponent(symbol)}`;
     const win = window.open(url, '_blank', 'noopener,noreferrer');
     if (!win) {
-      navigate(url, { state: { opportunity } });
+      navigate(getScannerDetailPath(symbol), { state: { opportunity } });
     }
   };
 
