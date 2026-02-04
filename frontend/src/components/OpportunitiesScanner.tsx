@@ -224,7 +224,20 @@ export default function OpportunitiesScanner() {
       }
 
       const reqId = ++requestSeq.current;
-      const oppsResponse = await axios.get(buildApiUrl('/api/opportunities'), { params });
+      const fetchWithRetry = async () => {
+        const delays = [600, 1200, 2000];
+        for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+          try {
+            return await axios.get(buildApiUrl('/api/opportunities'), { params });
+          } catch (err) {
+            if (attempt === delays.length) throw err;
+            await new Promise(res => setTimeout(res, delays[attempt]));
+          }
+        }
+        throw new Error('unreachable');
+      };
+
+      const oppsResponse = await fetchWithRetry();
       if (reqId !== requestSeq.current) {
         return;
       }
