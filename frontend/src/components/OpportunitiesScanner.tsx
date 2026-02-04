@@ -655,10 +655,10 @@ export default function OpportunitiesScanner() {
                 opp.net_apr < 0 ? 'border-red-200/50 dark:border-red-500/20' : ''
               }`}
               style={{ animationDelay: `${(index % 10) * 40}ms` }}
-            onClick={(event) => {
-              openDetail(opp, event);
-            }}
-          >
+              onClick={(event) => {
+                openDetail(opp, event);
+              }}
+            >
               <div className="flex flex-col lg:flex-row lg:items-center gap-5">
                 {/* Left: Symbol & Rates */}
                 <div className="lg:w-72">
