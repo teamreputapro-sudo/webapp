@@ -8,7 +8,7 @@
  * - Integrated action previews
  */
 
-import { useState, useEffect, useMemo, type MouseEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { AlertCircle, Search, ArrowUpRight, Trophy, Clock, Calendar, CalendarDays, ChevronLeft, ChevronRight, TrendingUp, Calculator, BarChart3, Zap, Info, Flame, ArrowUp, ArrowDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
@@ -100,6 +100,7 @@ interface TopPerformer {
 }
 
 const ITEMS_PER_PAGE = 10;
+const CACHE_TTL_MS = 30_000;
 
 export default function OpportunitiesScanner() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -125,6 +126,8 @@ export default function OpportunitiesScanner() {
   // HIP-3 filter: 'all' shows everything, 'crypto' hides HIP-3, 'hip3' shows only HIP-3
   const [hip3Filter, setHip3Filter] = useState<'all' | 'crypto' | 'hip3'>('all');
   const [hip3FilterDraft, setHip3FilterDraft] = useState<'all' | 'crypto' | 'hip3'>('all');
+  const cacheRef = useRef<Map<string, { data: Opportunity[]; total: number; ts: number }>>(new Map());
+  const requestSeq = useRef(0);
   const buildDetailUrl = (opp: Opportunity) => {
     const params = new URLSearchParams();
     if (opp.exchange_short) params.set('venue_short', opp.exchange_short);
@@ -196,28 +199,64 @@ export default function OpportunitiesScanner() {
     try {
       setLoading(true);
 
-      const oppsResponse = await axios.get(buildApiUrl('/api/opportunities'), {
-        params: {
-          min_net_apr: 0,
-          sort_by: sortBy,
-          order: sortDirection,
-          hours: 24,
-          include_hip3: hip3Filter !== 'crypto',
-          page: currentPage,
-          page_size: ITEMS_PER_PAGE,
-          search: searchQuery || undefined,
-          venues: selectedVenues.size === ALL_VENUES.length ? undefined : Array.from(selectedVenues).join(','),
-          hide_recently_listed: hideRecentlyListed,
-          hip3_filter: hip3Filter
-        }
-      });
+      const params = {
+        min_net_apr: 0,
+        sort_by: sortBy,
+        order: sortDirection,
+        hours: 24,
+        include_hip3: hip3Filter !== 'crypto',
+        page: currentPage,
+        page_size: ITEMS_PER_PAGE,
+        search: searchQuery || undefined,
+        venues: selectedVenues.size === ALL_VENUES.length ? undefined : Array.from(selectedVenues).join(','),
+        hide_recently_listed: hideRecentlyListed,
+        hip3_filter: hip3Filter
+      };
+
+      const cacheKey = JSON.stringify(params);
+      const cached = cacheRef.current.get(cacheKey);
+      if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
+        setOpportunities(cached.data);
+        setTotalCount(cached.total);
+        computeTopPerformers(cached.data);
+        setLoading(false);
+        return;
+      }
+
+      const reqId = ++requestSeq.current;
+      const oppsResponse = await axios.get(buildApiUrl('/api/opportunities'), { params });
+      if (reqId !== requestSeq.current) {
+        return;
+      }
 
       const opps = oppsResponse.data.opportunities || [];
-      setOpportunities(opps);
       const baseTotal = oppsResponse.data.total_count || opps.length;
+      cacheRef.current.set(cacheKey, { data: opps, total: baseTotal, ts: Date.now() });
+      setOpportunities(opps);
       setTotalCount(baseTotal);
-
       computeTopPerformers(opps);
+
+      const totalPages = Math.max(1, Math.ceil(baseTotal / ITEMS_PER_PAGE));
+      const prefetchPage = async (page: number) => {
+        if (page < 1 || page > totalPages) return;
+        const preParams = { ...params, page };
+        const preKey = JSON.stringify(preParams);
+        const preCached = cacheRef.current.get(preKey);
+        if (preCached && (Date.now() - preCached.ts < CACHE_TTL_MS)) return;
+        try {
+          const res = await axios.get(buildApiUrl('/api/opportunities'), { params: preParams });
+          const preOpps = res.data.opportunities || [];
+          const preTotal = res.data.total_count || preOpps.length;
+          cacheRef.current.set(preKey, { data: preOpps, total: preTotal, ts: Date.now() });
+        } catch {
+          // Ignore prefetch errors
+        }
+      };
+
+      prefetchPage(currentPage + 1);
+      if (currentPage > 1) {
+        prefetchPage(currentPage - 1);
+      }
 
       setError(null);
     } catch (err) {
@@ -303,14 +342,7 @@ export default function OpportunitiesScanner() {
     return { label: 'High', icon: 'bank', color: 'text-gray-400' };
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 space-y-4">
-        <div className="w-12 h-12 spinner border-4" />
-        <p className="text-gray-500 dark:text-gray-400 font-medium animate-pulse">Scanning opportunities...</p>
-      </div>
-    );
-  }
+  const showSkeleton = loading;
 
   if (error) {
     return (
@@ -337,11 +369,11 @@ export default function OpportunitiesScanner() {
   return (
     <div className="space-y-6">
       {/* Top Performers Section - Original Style */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
         {topPerformerCards.map((card, index) => (
           <div
             key={card.key}
-            className="card hover-lift animate-fade-in-up relative overflow-hidden"
+            className="card hover-lift animate-fade-in-up relative overflow-hidden min-h-[220px] flex flex-col"
             style={{ animationDelay: `${index * 100}ms` }}
           >
             {/* Gradient accent bar */}
@@ -357,7 +389,16 @@ export default function OpportunitiesScanner() {
               <Trophy className="w-5 h-5 text-amber-400 opacity-50" />
             </div>
 
-            {card.data.length > 0 ? (
+            {showSkeleton ? (
+              <div className="space-y-3 animate-pulse">
+                {[0, 1, 2].map((row) => (
+                  <div
+                    key={`${card.key}-skeleton-${row}`}
+                    className="h-10 rounded-lg bg-gray-200/70 dark:bg-surface-700/70"
+                  />
+                ))}
+              </div>
+            ) : card.data.length > 0 ? (
               <div className="space-y-3">
                 {card.data.map((performer, rank) => (
                   <div
@@ -394,7 +435,7 @@ export default function OpportunitiesScanner() {
                 ))}
               </div>
             ) : (
-              <div className="text-gray-400 dark:text-gray-500 text-sm">
+              <div className="text-gray-400 dark:text-gray-500 text-sm min-h-[120px] flex items-center">
                 No data available
               </div>
             )}
@@ -571,35 +612,60 @@ export default function OpportunitiesScanner() {
         </div>
 
         {/* Results count */}
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-surface-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-surface-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 min-h-[18px]">
           <span>
-            {totalCount} opportunities
-            {searchQuery && <span className="text-primary-500"> matching "{searchQuery}"</span>}
+            {showSkeleton ? 'Loading opportunities…' : `${totalCount} opportunities`}
+            {!showSkeleton && searchQuery && <span className="text-primary-500"> matching "{searchQuery}"</span>}
           </span>
-          {totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
+          {!showSkeleton && totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
         </div>
       </div>
 
       {/* Opportunities Grid */}
       <div className="space-y-3">
-        {paginatedOpportunities.map((opp, index) => (
-          <div
-            key={opp.opportunity_id}
-            className={`card p-5 hover-glow cursor-pointer animate-fade-in-up group ${
-              opp.net_apr < 0 ? 'border-red-200/50 dark:border-red-500/20' : ''
-            }`}
-            style={{ animationDelay: `${(index % 10) * 40}ms` }}
+        {showSkeleton ? (
+          Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`opp-skeleton-${index}`}
+              className="card p-5 animate-pulse min-h-[180px]"
+            >
+              <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+                <div className="lg:w-72 space-y-3">
+                  <div className="h-6 w-28 rounded bg-gray-200/70 dark:bg-surface-700/70" />
+                  <div className="h-14 rounded bg-gray-200/70 dark:bg-surface-700/70" />
+                </div>
+                <div className="flex-1 flex justify-center">
+                  <div className="h-16 w-40 rounded bg-gray-200/70 dark:bg-surface-700/70" />
+                </div>
+                <div className="lg:w-48 space-y-3">
+                  <div className="h-16 rounded bg-gray-200/70 dark:bg-surface-700/70" />
+                  <div className="h-16 rounded bg-gray-200/70 dark:bg-surface-700/70" />
+                </div>
+                <div className="lg:w-80">
+                  <div className="h-20 rounded bg-gray-200/70 dark:bg-surface-700/70" />
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          paginatedOpportunities.map((opp, index) => (
+            <div
+              key={opp.opportunity_id}
+              className={`card p-5 hover-glow cursor-pointer animate-fade-in-up group ${
+                opp.net_apr < 0 ? 'border-red-200/50 dark:border-red-500/20' : ''
+              }`}
+              style={{ animationDelay: `${(index % 10) * 40}ms` }}
             onClick={(event) => {
               openDetail(opp, event);
             }}
           >
-            <div className="flex flex-col lg:flex-row lg:items-center gap-5">
-              {/* Left: Symbol & Rates */}
-              <div className="lg:w-72">
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  <h3 className="text-2xl font-bold font-display text-gray-900 dark:text-white">
-                    {opp.symbol}
-                  </h3>
+              <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+                {/* Left: Symbol & Rates */}
+                <div className="lg:w-72">
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <h3 className="text-2xl font-bold font-display text-gray-900 dark:text-white">
+                      {opp.symbol}
+                    </h3>
                   {/* HIP-3 DEX Badges */}
                   {(opp.is_hip3_short || opp.is_hip3_long) && (
                     <div className="flex items-center gap-1">
@@ -777,10 +843,11 @@ export default function OpportunitiesScanner() {
                         <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">{period.label}</div>
                         <div className={`font-mono text-sm font-semibold ${period.value !== undefined ? getAPRColor(period.value) : 'text-gray-400'}`}>
                           {period.value !== undefined ? formatAPR(period.value) : '—'}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
                 </div>
 
                 {/* Action Buttons - More Clickable */}
