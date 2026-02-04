@@ -8,9 +8,8 @@
  * - Integrated action previews
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import { AlertCircle, Search, ArrowUpRight, Trophy, Clock, Calendar, CalendarDays, ChevronLeft, ChevronRight, TrendingUp, Calculator, BarChart3, Zap, Info, Flame, ArrowUp, ArrowDown } from 'lucide-react';
-import SymbolDetailModal from './SymbolDetailModal';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
@@ -101,6 +100,7 @@ interface TopPerformer {
 }
 
 const ITEMS_PER_PAGE = 10;
+const CACHE_TTL_MS = 30_000;
 
 export default function OpportunitiesScanner() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -113,8 +113,6 @@ export default function OpportunitiesScanner() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedVenues, setSelectedVenues] = useState<Set<string>>(new Set(ALL_VENUES));
@@ -128,6 +126,27 @@ export default function OpportunitiesScanner() {
   // HIP-3 filter: 'all' shows everything, 'crypto' hides HIP-3, 'hip3' shows only HIP-3
   const [hip3Filter, setHip3Filter] = useState<'all' | 'crypto' | 'hip3'>('all');
   const [hip3FilterDraft, setHip3FilterDraft] = useState<'all' | 'crypto' | 'hip3'>('all');
+  const cacheRef = useRef<Map<string, { data: Opportunity[]; total: number; ts: number }>>(new Map());
+  const requestSeq = useRef(0);
+  const buildDetailUrl = (opp: Opportunity) => {
+    const params = new URLSearchParams();
+    if (opp.exchange_short) params.set('venue_short', opp.exchange_short);
+    if (opp.exchange_long) params.set('venue_long', opp.exchange_long);
+    if (opp.dex_name_short) params.set('dex_name_short', opp.dex_name_short);
+    if (opp.dex_name_long) params.set('dex_name_long', opp.dex_name_long);
+    const qs = params.toString();
+    return `${window.location.origin}/scanner/s/${encodeURIComponent(opp.symbol)}${qs ? `?${qs}` : ''}`;
+  };
+
+  const openDetail = (opp: Opportunity, event?: MouseEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const url = buildDetailUrl(opp);
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      console.warn('Popup blocked. Please allow popups to open symbol detail.');
+    }
+  };
 
   // Helper to check if a symbol is recently listed (insufficient historical data)
   const isRecentlyListed = (opp: Opportunity): boolean => {
@@ -180,28 +199,64 @@ export default function OpportunitiesScanner() {
     try {
       setLoading(true);
 
-      const oppsResponse = await axios.get(buildApiUrl('/api/opportunities'), {
-        params: {
-          min_net_apr: 0,
-          sort_by: sortBy,
-          order: sortDirection,
-          hours: 24,
-          include_hip3: hip3Filter !== 'crypto',
-          page: currentPage,
-          page_size: ITEMS_PER_PAGE,
-          search: searchQuery || undefined,
-          venues: selectedVenues.size === ALL_VENUES.length ? undefined : Array.from(selectedVenues).join(','),
-          hide_recently_listed: hideRecentlyListed,
-          hip3_filter: hip3Filter
-        }
-      });
+      const params = {
+        min_net_apr: 0,
+        sort_by: sortBy,
+        order: sortDirection,
+        hours: 24,
+        include_hip3: hip3Filter !== 'crypto',
+        page: currentPage,
+        page_size: ITEMS_PER_PAGE,
+        search: searchQuery || undefined,
+        venues: selectedVenues.size === ALL_VENUES.length ? undefined : Array.from(selectedVenues).join(','),
+        hide_recently_listed: hideRecentlyListed,
+        hip3_filter: hip3Filter
+      };
+
+      const cacheKey = JSON.stringify(params);
+      const cached = cacheRef.current.get(cacheKey);
+      if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
+        setOpportunities(cached.data);
+        setTotalCount(cached.total);
+        computeTopPerformers(cached.data);
+        setLoading(false);
+        return;
+      }
+
+      const reqId = ++requestSeq.current;
+      const oppsResponse = await axios.get(buildApiUrl('/api/opportunities'), { params });
+      if (reqId !== requestSeq.current) {
+        return;
+      }
 
       const opps = oppsResponse.data.opportunities || [];
-      setOpportunities(opps);
       const baseTotal = oppsResponse.data.total_count || opps.length;
+      cacheRef.current.set(cacheKey, { data: opps, total: baseTotal, ts: Date.now() });
+      setOpportunities(opps);
       setTotalCount(baseTotal);
-
       computeTopPerformers(opps);
+
+      const totalPages = Math.max(1, Math.ceil(baseTotal / ITEMS_PER_PAGE));
+      const prefetchPage = async (page: number) => {
+        if (page < 1 || page > totalPages) return;
+        const preParams = { ...params, page };
+        const preKey = JSON.stringify(preParams);
+        const preCached = cacheRef.current.get(preKey);
+        if (preCached && (Date.now() - preCached.ts < CACHE_TTL_MS)) return;
+        try {
+          const res = await axios.get(buildApiUrl('/api/opportunities'), { params: preParams });
+          const preOpps = res.data.opportunities || [];
+          const preTotal = res.data.total_count || preOpps.length;
+          cacheRef.current.set(preKey, { data: preOpps, total: preTotal, ts: Date.now() });
+        } catch {
+          // Ignore prefetch errors
+        }
+      };
+
+      prefetchPage(currentPage + 1);
+      if (currentPage > 1) {
+        prefetchPage(currentPage - 1);
+      }
 
       setError(null);
     } catch (err) {
@@ -253,6 +308,36 @@ export default function OpportunitiesScanner() {
 
   const formatAPR = (apr: number) => `${apr.toFixed(1)}%`;
 
+  const renderOI = (opp: Opportunity) => {
+    const shortBadge = getOISizeBadge(opp.oi_short);
+    const longBadge = getOISizeBadge(opp.oi_long);
+    const shortAbbrev = opp.dex_name_short?.toUpperCase() || VENUE_ABBREV[opp.exchange_short] || opp.exchange_short.slice(0, 3).toUpperCase();
+    const longAbbrev = opp.dex_name_long?.toUpperCase() || VENUE_ABBREV[opp.exchange_long] || opp.exchange_long.slice(0, 3).toUpperCase();
+    return (
+      <div className="flex items-center justify-center">
+        <div className="flex-1 text-center">
+          <div className="text-[9px] text-red-400 font-medium mb-0.5">{shortAbbrev}</div>
+          <div className="flex items-center justify-center gap-0.5">
+            {shortBadge.icon === 'flame' && <Flame className="w-2.5 h-2.5 text-orange-400" />}
+            <span className={`font-mono text-xs font-semibold ${shortBadge.color}`}>
+              {formatOI(opp.oi_short)}
+            </span>
+          </div>
+        </div>
+        <div className="w-px h-8 bg-gray-300 dark:bg-surface-600 mx-2" />
+        <div className="flex-1 text-center">
+          <div className="text-[9px] text-emerald-400 font-medium mb-0.5">{longAbbrev}</div>
+          <div className="flex items-center justify-center gap-0.5">
+            {longBadge.icon === 'flame' && <Flame className="w-2.5 h-2.5 text-orange-400" />}
+            <span className={`font-mono text-xs font-semibold ${longBadge.color}`}>
+              {formatOI(opp.oi_long)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const getAPRColor = (apr: number) => {
     if (apr >= 50) return 'text-neon-green';
     if (apr >= 20) return 'text-emerald-500 dark:text-emerald-400';
@@ -287,7 +372,14 @@ export default function OpportunitiesScanner() {
     return { label: 'High', icon: 'bank', color: 'text-gray-400' };
   };
 
-  const showSkeleton = loading;
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
+        <div className="w-12 h-12 spinner border-4" />
+        <p className="text-gray-500 dark:text-gray-400 font-medium animate-pulse">Scanning opportunities...</p>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -314,11 +406,11 @@ export default function OpportunitiesScanner() {
   return (
     <div className="space-y-6">
       {/* Top Performers Section - Original Style */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {topPerformerCards.map((card, index) => (
           <div
             key={card.key}
-            className="card hover-lift animate-fade-in-up relative overflow-hidden min-h-[220px] flex flex-col"
+            className="card hover-lift animate-fade-in-up relative overflow-hidden"
             style={{ animationDelay: `${index * 100}ms` }}
           >
             {/* Gradient accent bar */}
@@ -334,30 +426,20 @@ export default function OpportunitiesScanner() {
               <Trophy className="w-5 h-5 text-amber-400 opacity-50" />
             </div>
 
-            {showSkeleton ? (
-              <div className="space-y-3 animate-pulse">
-                {[0, 1, 2].map((row) => (
-                  <div
-                    key={`${card.key}-skeleton-${row}`}
-                    className="h-10 rounded-lg bg-gray-200/70 dark:bg-surface-700/70"
-                  />
-                ))}
-              </div>
-            ) : card.data.length > 0 ? (
+            {card.data.length > 0 ? (
               <div className="space-y-3">
                 {card.data.map((performer, rank) => (
                   <div
                     key={`${performer.symbol}-${performer.exchange_short}-${performer.exchange_long}`}
                     className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-surface-800 hover:bg-gray-100 dark:hover:bg-surface-700 cursor-pointer transition-colors"
-                    onClick={() => {
+                    onClick={(event) => {
                       const opp = opportunities.find(o =>
                         o.symbol === performer.symbol &&
                         o.exchange_short === performer.exchange_short &&
                         o.exchange_long === performer.exchange_long
                       );
                       if (opp) {
-                        setSelectedSymbol(opp.symbol);
-                        setSelectedOpportunity(opp);
+                        openDetail(opp, event);
                       }
                     }}
                   >
@@ -381,7 +463,7 @@ export default function OpportunitiesScanner() {
                 ))}
               </div>
             ) : (
-              <div className="text-gray-400 dark:text-gray-500 text-sm min-h-[120px] flex items-center">
+              <div className="text-gray-400 dark:text-gray-500 text-sm">
                 No data available
               </div>
             )}
@@ -558,61 +640,35 @@ export default function OpportunitiesScanner() {
         </div>
 
         {/* Results count */}
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-surface-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 min-h-[18px]">
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-surface-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <span>
-            {showSkeleton ? 'Loading opportunities…' : `${totalCount} opportunities`}
-            {!showSkeleton && searchQuery && <span className="text-primary-500"> matching "{searchQuery}"</span>}
+            {totalCount} opportunities
+            {searchQuery && <span className="text-primary-500"> matching "{searchQuery}"</span>}
           </span>
-          {!showSkeleton && totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
+          {totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
         </div>
       </div>
 
       {/* Opportunities Grid */}
       <div className="space-y-3">
-        {showSkeleton ? (
-          Array.from({ length: 6 }).map((_, index) => (
-            <div
-              key={`opp-skeleton-${index}`}
-              className="card p-5 animate-pulse min-h-[180px]"
-            >
-              <div className="flex flex-col lg:flex-row lg:items-center gap-5">
-                <div className="lg:w-72 space-y-3">
-                  <div className="h-6 w-28 rounded bg-gray-200/70 dark:bg-surface-700/70" />
-                  <div className="h-14 rounded bg-gray-200/70 dark:bg-surface-700/70" />
-                </div>
-                <div className="flex-1 flex justify-center">
-                  <div className="h-16 w-40 rounded bg-gray-200/70 dark:bg-surface-700/70" />
-                </div>
-                <div className="lg:w-48 space-y-3">
-                  <div className="h-16 rounded bg-gray-200/70 dark:bg-surface-700/70" />
-                  <div className="h-16 rounded bg-gray-200/70 dark:bg-surface-700/70" />
-                </div>
-                <div className="lg:w-80">
-                  <div className="h-20 rounded bg-gray-200/70 dark:bg-surface-700/70" />
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          paginatedOpportunities.map((opp, index) => (
-            <div
-              key={opp.opportunity_id}
-              className={`card p-5 hover-glow cursor-pointer animate-fade-in-up group ${
-                opp.net_apr < 0 ? 'border-red-200/50 dark:border-red-500/20' : ''
-              }`}
-              style={{ animationDelay: `${(index % 10) * 40}ms` }}
-              onClick={() => {
-                setSelectedSymbol(opp.symbol);
-                setSelectedOpportunity(opp);
-              }}
-            >
-              <div className="flex flex-col lg:flex-row lg:items-center gap-5">
-                {/* Left: Symbol & Rates */}
-                <div className="lg:w-72">
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <h3 className="text-2xl font-bold font-display text-gray-900 dark:text-white">
-                      {opp.symbol}
-                    </h3>
+        {paginatedOpportunities.map((opp, index) => (
+          <div
+            key={opp.opportunity_id}
+            className={`card p-5 hover-glow cursor-pointer animate-fade-in-up group ${
+              opp.net_apr < 0 ? 'border-red-200/50 dark:border-red-500/20' : ''
+            }`}
+            style={{ animationDelay: `${(index % 10) * 40}ms` }}
+            onClick={(event) => {
+              openDetail(opp, event);
+            }}
+          >
+            <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+              {/* Left: Symbol & Rates */}
+              <div className="lg:w-72">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <h3 className="text-2xl font-bold font-display text-gray-900 dark:text-white">
+                    {opp.symbol}
+                  </h3>
                   {/* HIP-3 DEX Badges */}
                   {(opp.is_hip3_short || opp.is_hip3_long) && (
                     <div className="flex items-center gap-1">
@@ -740,39 +796,7 @@ export default function OpportunitiesScanner() {
                   </div>
 
                   {/* OI per Venue - Left/Right */}
-                  {(() => {
-                    const shortBadge = getOISizeBadge(opp.oi_short);
-                    const longBadge = getOISizeBadge(opp.oi_long);
-                    // Use HIP-3 DEX name if available, otherwise venue abbreviation
-                    const shortAbbrev = opp.dex_name_short?.toUpperCase() || VENUE_ABBREV[opp.exchange_short] || opp.exchange_short.slice(0, 3).toUpperCase();
-                    const longAbbrev = opp.dex_name_long?.toUpperCase() || VENUE_ABBREV[opp.exchange_long] || opp.exchange_long.slice(0, 3).toUpperCase();
-                    return (
-                      <div className="flex items-center justify-center">
-                        {/* Short venue - Left */}
-                        <div className="flex-1 text-center">
-                          <div className="text-[9px] text-red-400 font-medium mb-0.5">{shortAbbrev}</div>
-                          <div className="flex items-center justify-center gap-0.5">
-                            {shortBadge.icon === 'flame' && <Flame className="w-2.5 h-2.5 text-orange-400" />}
-                            <span className={`font-mono text-xs font-semibold ${shortBadge.color}`}>
-                              {formatOI(opp.oi_short)}
-                            </span>
-                          </div>
-                        </div>
-                        {/* Separator */}
-                        <div className="w-px h-8 bg-gray-300 dark:bg-surface-600 mx-2" />
-                        {/* Long venue - Right */}
-                        <div className="flex-1 text-center">
-                          <div className="text-[9px] text-emerald-400 font-medium mb-0.5">{longAbbrev}</div>
-                          <div className="flex items-center justify-center gap-0.5">
-                            {longBadge.icon === 'flame' && <Flame className="w-2.5 h-2.5 text-orange-400" />}
-                            <span className={`font-mono text-xs font-semibold ${longBadge.color}`}>
-                              {formatOI(opp.oi_long)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {renderOI(opp)}
                 </div>
               </div>
 
@@ -790,11 +814,10 @@ export default function OpportunitiesScanner() {
                         <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">{period.label}</div>
                         <div className={`font-mono text-sm font-semibold ${period.value !== undefined ? getAPRColor(period.value) : 'text-gray-400'}`}>
                           {period.value !== undefined ? formatAPR(period.value) : '—'}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Action Buttons - More Clickable */}
@@ -887,17 +910,6 @@ export default function OpportunitiesScanner() {
         </div>
       )}
 
-      {/* Symbol Detail Modal */}
-      {selectedSymbol && (
-        <SymbolDetailModal
-          symbol={selectedSymbol}
-          opportunity={selectedOpportunity || undefined}
-          onClose={() => {
-            setSelectedSymbol(null);
-            setSelectedOpportunity(null);
-          }}
-        />
-      )}
     </div>
   );
 }
