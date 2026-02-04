@@ -440,7 +440,7 @@ export default function OpportunitiesScanner() {
               </div>
             )}
           </div>
-        ))}
+        )))}
       </div>
 
       {/* Unified Control Bar */}
