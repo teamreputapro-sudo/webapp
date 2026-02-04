@@ -843,11 +843,10 @@ export default function OpportunitiesScanner() {
                         <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">{period.label}</div>
                         <div className={`font-mono text-sm font-semibold ${period.value !== undefined ? getAPRColor(period.value) : 'text-gray-400'}`}>
                           {period.value !== undefined ? formatAPR(period.value) : '—'}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Action Buttons - More Clickable */}
