@@ -55,9 +55,9 @@ const HIP3_DEX_COLORS: Record<string, string> = {
 
 // Banned symbols (not available for trading)
 
-// Minimum samples for ~5 days of data (5 days * 24 hours * 12 samples/hour = 1440)
-// Symbols with fewer samples are considered "recently listed"
-const MIN_SAMPLES_7D = 1500;
+// Minimum samples for 7d with hourly aggregates (7 * 24 = 168).
+// Keep a buffer for missing buckets so we don't mark active symbols as "recently listed".
+const MIN_SAMPLES_7D = 120;
 
 interface Opportunity {
   opportunity_id: string;

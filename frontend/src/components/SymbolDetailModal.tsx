@@ -45,6 +45,7 @@ interface HistoricalData {
 interface ExchangeInfo {
   name: string;
   type: 'short' | 'long';
+  dex_name?: string | null;
   funding_rate: number;
   apr: number;
   maker_fee: number;
@@ -194,12 +195,28 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
         }
       }
 
+      // Build stats URL with optional venue params (for HIP-3 dex resolution)
+      let statsUrl = buildApiUrl(`/api/symbol-detail/stats/${symbol}`);
+      if (selectedVenues) {
+        const statsParams = new URLSearchParams();
+        if (selectedVenues.dexShort) {
+          statsParams.set('dex_name_short', selectedVenues.dexShort);
+        }
+        if (selectedVenues.dexLong) {
+          statsParams.set('dex_name_long', selectedVenues.dexLong);
+        }
+        const qs = statsParams.toString();
+        if (qs) {
+          statsUrl += `?${qs}`;
+        }
+      }
+
       // Fetch all data in parallel from real API
       const [historyRes, exchangesRes, snapshotRes, statsRes] = await Promise.allSettled([
         axios.get(historyUrl),
         axios.get(exchangesUrl),
         axios.get(snapshotUrl),
-        axios.get(buildApiUrl(`/api/symbol-detail/stats/${symbol}`))
+        axios.get(statsUrl)
       ]);
 
       // Process historical data
@@ -550,7 +567,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                           <TrendingUp className="w-5 h-5 text-green-400" />
                         )}
                         <div>
-                          <span className="font-medium text-white">{exchange.name}</span>
+                          <span className="font-medium text-white">
+                            {exchange.name}
+                            {exchange.dex_name ? ` • ${exchange.dex_name.toUpperCase()}` : ''}
+                          </span>
                           <span className="text-xs text-gray-400 ml-2">({exchange.type})</span>
                         </div>
                       </div>
