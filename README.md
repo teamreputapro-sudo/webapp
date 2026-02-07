@@ -1,8 +1,9 @@
-# Funding Arbitrage Frontend
+# Funding Arbitrage Frontend (Webapp)
 
 > **Status:** EN PRODUCCION
-> **URL:** https://54strategydigital.com/
-> **Ultima actualizacion:** 2025-12-15
+> **Scanner URL:** https://54strategydigital.com/scanner/
+> **Root URL:** https://54strategydigital.com/
+> **Ultima actualizacion:** 2026-02-07
 
 ---
 
@@ -14,27 +15,35 @@
 - **Recharts** - Charts
 - **Lucide React** - Icons
 - **Axios** - HTTP client
+- **Cloudflare Pages** - Hosting del scanner
+- **Cloudflare Worker** - Router `/scanner*`
 
 ---
 
-## Produccion
+## Produccion (estado actual)
 
-El frontend esta desplegado en:
+El **scanner** se sirve desde **Cloudflare Pages** bajo `/scanner/` y el **home** se sirve desde la **VPS**.
+
+**Scanner (Pages + Worker)**
+- **URL:** https://54strategydigital.com/scanner/
+- **Pages origin:** proyecto Pages (ver `DEPLOY_PAGES_SCANNER_BASEPATH.md`)
+- **Worker:** `scanner-router` proxya `/scanner*` y añade `x-scanner-worker: 1`
+
+**Home (VPS)**
 - **URL:** https://54strategydigital.com/
-- **Archivos:** `/var/www/html/` en VPS
+- **Docroot:** `/var/www/webapp` (Nginx)
 - **API:** https://54strategydigital.com/api/
 
-### Configuracion Produccion
+### Configuracion Produccion (Pages)
 
 **.env.production:**
 ```bash
-VITE_API_URL=https://54strategydigital.com
-VITE_WS_URL=wss://54strategydigital.com/ws
+VITE_API_BASE_URL=https://54strategydigital.com
 ```
 
 ---
 
-## Desarrollo Local
+## Desarrollo Local (scanner)
 
 ### Requisitos
 - Node.js 18+
@@ -48,7 +57,7 @@ npm install
 ### Desarrollo
 ```bash
 npm run dev
-# http://localhost:5173
+# http://localhost:5173/scanner/
 ```
 
 ### Build
@@ -62,19 +71,45 @@ npm run build
 ## Estructura
 
 ```
-src/
-├── components/           # React components
-│   ├── FundingRatesTable.tsx
-│   ├── OpportunitiesScanner.tsx
-│   └── ProfitCalculator.tsx
-├── services/            # API clients
-│   ├── api.ts          # REST API
-│   └── websocket.ts    # WebSocket
-├── types/              # TypeScript types
-├── App.tsx             # Main app
-├── main.tsx            # Entry point
-└── index.css           # Global styles
+frontend/
+├── src/
+│   ├── components/
+│   ├── services/
+│   ├── types/
+│   ├── App.tsx
+│   ├── main.tsx
+│   └── index.css
+public/
+scanner-router/
 ```
+
+---
+
+## Docs clave (contexto rápido)
+
+- `WEBAPP_CONTEXT.md` — contexto general del módulo webapp
+- `DEPLOY_PAGES_SCANNER_BASEPATH.md` — deploy Pages
+- `UPGRADE_ARBITRABLE_SYMBOLS.md` — registro canónico de símbolos (backend)
+- `UPGRADE_BACKEND.md` — cambios recientes backend + DB
+
+---
+
+## Verificación en producción (con SSL self‑signed en origin)
+
+Desde tu terminal:
+```bash
+curl -k -I https://54strategydigital.com/scanner/ | egrep -i "x-scanner-worker|server|cache-control|cf-ray"
+```
+Esperado:
+- `x-scanner-worker: 1`
+- `server: cloudflare`
+
+Assets cache:
+```bash
+curl -k -I https://54strategydigital.com/scanner/assets/index-*.js
+```
+Esperado:
+- `Cache-Control: public, max-age=31536000, immutable`
 
 ---
 
