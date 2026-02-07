@@ -9,20 +9,35 @@
  * - /cookies (Cookie Policy)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { TrendingUp, LineChart, BookOpen, Menu, X, WifiOff, AlertCircle, Moon, Sun, Home } from 'lucide-react';
 import OpportunitiesScanner from './components/OpportunitiesScanner';
-import LiveTradingChart from './components/LiveTradingChart';
-import Insights from './components/Insights';
-import ArticlePage from './components/ArticlePage';
 import AdBanner from './components/AdBanner';
 import SEO from './components/SEO';
-import LandingPage from './components/LandingPage';
 import SymbolDetailRoute from './components/SymbolDetailRoute';
 import { api } from './services/api';
 import { withBase } from './lib/assetBase';
 import { getLandingPath, getMainPaths, getScannerDetailRoute, getScannerPath, isScannerMode } from './lib/routerBase';
+
+const ScannerRedirect = () => {
+  useEffect(() => {
+    const { pathname, search, hash } = window.location;
+    const target = pathname === '/scanner' ? '/scanner/' : pathname;
+    window.location.replace(`${window.location.origin}${target}${search}${hash}`);
+  }, []);
+
+  return (
+    <div className="card animate-fade-in">
+      <div className="text-sm text-gray-600 dark:text-gray-400">Redirecting to Scanner…</div>
+    </div>
+  );
+};
+
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const LiveTradingChart = lazy(() => import('./components/LiveTradingChart'));
+const Insights = lazy(() => import('./components/Insights'));
+const ArticlePage = lazy(() => import('./components/ArticlePage'));
 
 // Dark mode hook
 function useDarkMode() {
@@ -736,45 +751,49 @@ export default function App() {
       <SEO />
 
       {/* Header */}
-      <header className="bg-white/80 dark:bg-surface-900/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-surface-700/50 sticky top-0 z-50">
+      <header className="bg-white/80 dark:bg-surface-900/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-surface-700/50 sticky top-0 z-50 h-16 min-h-[64px]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-full min-h-[64px]">
             {/* Logo & Title */}
-            <Link to="/" className="flex items-center space-x-3 group">
+            <Link to="/" className="flex items-center space-x-3 group shrink-0">
               <img
                 src={withBase('logo-54sd-mini.png?v=2')}
                 alt="54 Strategy Digital"
+                width={40}
+                height={40}
                 className="w-10 h-10 object-contain group-hover:scale-105 transition-transform duration-300"
               />
               <div>
                 <h1 className="text-xl font-bold font-display text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-neon-cyan transition-colors">
                   54 Strategy Digital
                 </h1>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 min-h-[20px]">
                   <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block font-medium">
                     Real-time Opportunities
                   </p>
                   {/* Backend Status */}
-                  {backendStatus === 'online' && (
-                    <div className="live-indicator">
-                      <span>Live</span>
-                    </div>
-                  )}
-                  {backendStatus === 'offline' && (
-                    <div className="flex items-center space-x-1 px-2.5 py-1 bg-red-100 dark:bg-red-500/20 rounded-full">
-                      <WifiOff className="w-3 h-3 text-red-600 dark:text-red-400" />
-                      <span className="text-xs text-red-700 dark:text-red-400 font-semibold">Offline</span>
-                    </div>
-                  )}
-                  {backendStatus === 'checking' && (
-                    <div className="w-4 h-4 spinner" />
-                  )}
+                  <div className="flex items-center min-w-[96px] h-5">
+                    {backendStatus === 'online' && (
+                      <div className="live-indicator">
+                        <span>Live</span>
+                      </div>
+                    )}
+                    {backendStatus === 'offline' && (
+                      <div className="flex items-center space-x-1 px-2.5 py-1 bg-red-100 dark:bg-red-500/20 rounded-full">
+                        <WifiOff className="w-3 h-3 text-red-600 dark:text-red-400" />
+                        <span className="text-xs text-red-700 dark:text-red-400 font-semibold">Offline</span>
+                      </div>
+                    )}
+                    {backendStatus === 'checking' && (
+                      <div className="w-4 h-4 spinner" />
+                    )}
+                  </div>
                 </div>
               </div>
             </Link>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center space-x-1">
+            <nav className="hidden md:flex items-center space-x-1 min-w-[420px] min-h-[40px] flex-shrink-0">
               {navigation.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
@@ -911,33 +930,43 @@ export default function App() {
         )}
 
         {/* Routes */}
-        <Routes>
-          {isScannerMode() ? (
-            <>
-              <Route path="/" element={<OpportunitiesScanner />} />
-              <Route path={getScannerDetailRoute()} element={<SymbolDetailRoute />} />
-              <Route path="/home" element={<LandingPage />} />
-            </>
-          ) : (
-            <>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/scanner" element={<OpportunitiesScanner />} />
-              <Route path={getScannerDetailRoute()} element={<SymbolDetailRoute />} />
-            </>
+        <Suspense
+          fallback={(
+            <div className="animate-fade-in-up card">
+              <div className="h-5 w-40 bg-gray-200/70 dark:bg-surface-700 rounded mb-3" />
+              <div className="h-4 w-72 bg-gray-200/60 dark:bg-surface-700 rounded mb-2" />
+              <div className="h-4 w-64 bg-gray-200/50 dark:bg-surface-700 rounded" />
+            </div>
           )}
-          <Route path="/chart" element={<LiveTradingChart />} />
-          <Route path="/insights" element={<Insights />} />
-          <Route path="/insights/:slug" element={<ArticlePage />} />
-          <Route path="/faq" element={<FAQ />} />
-          <Route path="/glossary" element={<Glossary />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/cookies" element={<CookiePolicy />} />
-          <Route path="/about" element={<AboutUs />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          {/* Fallback based on mode */}
-          <Route path="*" element={isScannerMode() ? <OpportunitiesScanner /> : <LandingPage />} />
-        </Routes>
+        >
+          <Routes>
+            {isScannerMode() ? (
+              <>
+                <Route path="/" element={<OpportunitiesScanner />} />
+                <Route path={getScannerDetailRoute()} element={<SymbolDetailRoute />} />
+                <Route path="/home" element={<LandingPage />} />
+              </>
+            ) : (
+              <>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/scanner" element={<ScannerRedirect />} />
+                <Route path={getScannerDetailRoute()} element={<ScannerRedirect />} />
+              </>
+            )}
+            <Route path="/chart" element={<LiveTradingChart />} />
+            <Route path="/insights" element={<Insights />} />
+            <Route path="/insights/:slug" element={<ArticlePage />} />
+            <Route path="/faq" element={<FAQ />} />
+            <Route path="/glossary" element={<Glossary />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/cookies" element={<CookiePolicy />} />
+            <Route path="/about" element={<AboutUs />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            {/* Fallback based on mode */}
+            <Route path="*" element={isScannerMode() ? <OpportunitiesScanner /> : <LandingPage />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {/* Bottom Ad Banner - Only show when backend is online */}

@@ -2,7 +2,7 @@
 
 > **Scope:** Webapp (collector → DB → backend → frontend → Pages/Worker)
 > **Goal:** Garantizar que **todos** los símbolos arbitrables aparezcan y se comparen contra **todas** las venues disponibles, incluyendo HIP‑3 por DEX (xyz/flx/vntl/hyna/km/cash).
-> **Last update:** 2026-02-04
+> **Last update:** 2026-02-05
 
 ---
 
@@ -139,16 +139,42 @@ El frontend no filtra; solo refleja:
 
 ## Estado actual
 
+✅ Tabla canónica `arbitrable_symbols` (ver `webapp/sql/arbitrable_symbols.sql`)  
+✅ Collector upsert de símbolos arbitrables (por venue + dex)  
+✅ Backend filtra oportunidades por `arbitrable_symbols` (activo + last_seen)  
+✅ Base symbol canónica en queries para comparar venues (incluye HIP‑3 dex)  
+✅ HIP‑3 DEX list dinámica (usa `/hip3/dexes`) con fallback a lista conocida (incluye `cash`)  
 ✅ Warm‑cache + retry ya aplicados  
 ✅ Venue filter empujado a SQL  
-✅ HIP‑3 cache usado en primer load  
-⚠️ Falta registro canónico arbitrable (principal gap)
 
 ---
 
-## Próximo paso inmediato (si confirmas)
+## Notas de despliegue (VPS)
 
-1) Crear tabla `arbitrable_symbols`  
-2) Actualizar collector para poblarla  
-3) Ajustar backend para consumirla  
-4) Ajustar HIP‑3 DEX list dinámica
+1) Aplicar SQL (si aún no existe):
+```
+psql -d trading_data -f webapp/sql/arbitrable_symbols.sql
+```
+
+2) Permisos para el usuario del collector:
+```
+GRANT SELECT,INSERT,UPDATE,DELETE ON arbitrable_symbols TO trading_bot;
+```
+
+3) Reiniciar collector y backend:
+```
+systemctl restart data-collector.service webapp.service
+```
+
+4) Verificación rápida:
+```
+psql -d trading_data -c "select count(*) from arbitrable_symbols;"
+```
+
+---
+
+## Resultado esperado
+
+- Símbolos arbitrables completos (incluyendo HIP‑3)  
+- No se pierden oportunidades por `topk` ni por OI nulo puntual  
+- DEXs nuevos aparecen automáticamente si Hyperliquid los expone  
