@@ -306,7 +306,8 @@ const OrbitalScene = ({ onReady, scrollProgress = 0 }: OrbitalSceneProps) => {
     };
 
     const gltfLoader = new GLTFLoader();
-    const ktx2Loader = new KTX2Loader().setTranscoderPath('/ktx2/');
+    // Must respect `/scanner/` base path when served from Cloudflare Pages under a subpath.
+    const ktx2Loader = new KTX2Loader().setTranscoderPath(withBase('ktx2/'));
     ktx2Loader.detectSupport(renderer);
     gltfLoader.setKTX2Loader(ktx2Loader);
     gltfLoader.setMeshoptDecoder(MeshoptDecoder);
