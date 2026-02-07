@@ -41,6 +41,7 @@ De las capturas (p.3/4 y p.4/4):
 **INP (Interaction to Next Paint)**
 - Distribution: `Good 83%`, `Needs improvement 14%`, `Poor 3%`
 - Esto sugiere que el JS no esta "mal" en general, pero hay margen en interacciones bajo carga (movil).
+ - En la captura se ve `INP p50 = 424ms` (muestra pequena, pero buen indicador de orden de magnitud).
 
 **CLS (Cumulative Layout Shift)**
 - Distribution: `Good 14%`, `Needs improvement 3%`, `Poor 82%` (critico)
@@ -48,6 +49,7 @@ De las capturas (p.3/4 y p.4/4):
 
 Interpretacion:
 - La web esta teniendo **cambios de layout masivos** (típicamente por banners/ads que aparecen tarde, contenido que empuja, o placeholders sin altura).
+ - Cloudflare marca como elemento afectado: `div.space-y-6 > div.grid.grid-cols-1.md:grid-cols-3.gap-4` en `path=/scanner` (seccion Top Performers / layout principal del scanner).
 
 ### 1.2) Fix directo para CLS: reservar altura de Ads y evitar inserciones tardias
 
