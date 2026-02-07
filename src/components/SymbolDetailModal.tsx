@@ -27,6 +27,7 @@ interface SymbolDetailModalProps {
   symbol: string;
   opportunity?: OpportunityLike;
   onClose: () => void;
+  mode?: 'modal' | 'page';
 }
 
 // Interfaces matching backend responses
@@ -77,7 +78,10 @@ interface SymbolStats {
   samples: number;
 }
 
-export default function SymbolDetailModal({ symbol, opportunity, onClose }: SymbolDetailModalProps) {
+// API URL from environment variable (empty = same origin in production)
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+export default function SymbolDetailModal({ symbol, opportunity, onClose, mode = 'modal' }: SymbolDetailModalProps) {
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '15d' | '31d'>('24h');
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [exchangeInfo, setExchangeInfo] = useState<ExchangeInfo[]>([]);
@@ -304,6 +308,25 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
     return `$${oi.toFixed(0)}`;
   };
 
+  const parseUSD = (value?: string | null): number | null => {
+    if (!value) return null;
+    const s = value.trim();
+    if (!s || s === 'N/A' || s === '—') return null;
+    const cleaned = s.replace(/\$/g, '').replace(/,/g, '').trim();
+    if (!cleaned) return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // When details are opened in a new tab, `opportunity` can be undefined.
+  // Derive OI from exchangeInfo (API) so the OI box works in both flows.
+  const shortEx = exchangeInfo.find(e => e.type === 'short');
+  const longEx = exchangeInfo.find(e => e.type === 'long');
+  const oiShort = parseUSD(shortEx?.open_interest) ?? opportunity?.oi_short ?? null;
+  const oiLong = parseUSD(longEx?.open_interest) ?? opportunity?.oi_long ?? null;
+  const minOi = oiShort && oiLong ? Math.min(oiShort, oiLong) : (oiShort || oiLong || opportunity?.min_oi || null);
+  const hasOiData = !!(minOi && minOi > 0);
+
   const getSpreadColor = (spreadBps: number) => {
     if (spreadBps < 10) return 'text-green-400';
     if (spreadBps < 30) return 'text-yellow-400';
@@ -317,9 +340,17 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
     return { label: 'High OI', color: 'text-gray-400' };
   };
 
+  const wrapperClass = mode === 'modal'
+    ? 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
+    : 'min-h-screen bg-gray-900 flex items-start justify-center py-8 px-4';
+
+  const panelClass = mode === 'modal'
+    ? 'bg-gray-900 rounded-xl max-w-7xl w-full max-h-[90vh] overflow-y-auto'
+    : 'bg-gray-900 rounded-xl max-w-7xl w-full overflow-y-visible';
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-xl max-w-7xl w-full max-h-[90vh] overflow-y-auto">
+    <div className={wrapperClass}>
+      <div className={panelClass}>
         {/* Header */}
         <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 flex items-center justify-between z-10">
           <div>
@@ -832,21 +863,21 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
                   </div>
                 </div>
 
-                {opportunity?.min_oi ? (
+                {hasOiData ? (
                   <div className="space-y-4">
                     {/* OI Summary */}
                     <div className="bg-gray-900 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-gray-400">Min OI (Bottleneck)</span>
                         <div className="flex items-center gap-2">
-                          {getOISizeBadge(opportunity.min_oi).label.includes('Low') && (
+                          {getOISizeBadge(minOi || undefined).label.includes('Low') && (
                             <Flame className="w-4 h-4 text-orange-400" />
                           )}
-                          <span className={`font-mono font-bold ${getOISizeBadge(opportunity.min_oi).color}`}>
-                            {formatOI(opportunity.min_oi)}
+                          <span className={`font-mono font-bold ${getOISizeBadge(minOi || undefined).color}`}>
+                            {formatOI(minOi || undefined)}
                           </span>
-                          <span className={`text-xs px-2 py-0.5 rounded ${getOISizeBadge(opportunity.min_oi).label.includes('Low') ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-700 text-gray-400'}`}>
-                            {getOISizeBadge(opportunity.min_oi).label}
+                          <span className={`text-xs px-2 py-0.5 rounded ${getOISizeBadge(minOi || undefined).label.includes('Low') ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-700 text-gray-400'}`}>
+                            {getOISizeBadge(minOi || undefined).label}
                           </span>
                         </div>
                       </div>
@@ -859,10 +890,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
                             <span className="text-xs text-red-400 uppercase">Short Venue OI</span>
                           </div>
                           <div className="font-mono text-lg text-white">
-                            {formatOI(opportunity.oi_short)}
+                            {formatOI(oiShort || undefined)}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            {opportunity.exchange_short || opportunity.short_exchange}
+                            {selectedVenues?.short || opportunity?.exchange_short || opportunity?.short_exchange}
                           </div>
                         </div>
                         <div className="bg-green-900/20 border border-green-700/30 rounded-lg p-3">
@@ -871,22 +902,60 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
                             <span className="text-xs text-green-400 uppercase">Long Venue OI</span>
                           </div>
                           <div className="font-mono text-lg text-white">
-                            {formatOI(opportunity.oi_long)}
+                            {formatOI(oiLong || undefined)}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            {opportunity.exchange_long || opportunity.long_exchange}
+                            {selectedVenues?.long || opportunity?.exchange_long || opportunity?.long_exchange}
                           </div>
                         </div>
                       </div>
 
+                      {(oiShort || 0) > 0 || (oiLong || 0) > 0 ? (
+                        <div className="mt-4 pt-3 border-t border-gray-700">
+                          <div className="text-xs text-gray-400 mb-2">OI Comparison</div>
+                          <ResponsiveContainer width="100%" height={120}>
+                            <BarChart
+                              data={[
+                                { side: 'Short', oi: oiShort || 0 },
+                                { side: 'Long', oi: oiLong || 0 },
+                              ]}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                              <XAxis dataKey="side" stroke="#9CA3AF" tick={{ fill: '#9CA3AF', fontSize: 12 }} />
+                              <YAxis
+                                stroke="#9CA3AF"
+                                tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                                tickFormatter={(v) => {
+                                  const n = Number(v);
+                                  if (!Number.isFinite(n)) return '';
+                                  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+                                  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+                                  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+                                  return `${n.toFixed(0)}`;
+                                }}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: '#1F2937',
+                                  border: '1px solid #374151',
+                                  borderRadius: '0.5rem',
+                                }}
+                                formatter={(value: number) => [formatOI(value), 'Open Interest']}
+                              />
+                              <Bar dataKey="oi" fill="#60A5FA" radius={[6, 6, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : null}
+
                       {/* Imbalance Indicator */}
-                      {opportunity.oi_short && opportunity.oi_long && opportunity.oi_short > 0 && opportunity.oi_long > 0 && (
+                      {oiShort && oiLong && oiShort > 0 && oiLong > 0 && (
                         <div className="mt-4 pt-3 border-t border-gray-700">
                           <div className="flex items-center justify-between">
                             <span className="text-gray-400 text-sm">OI Imbalance</span>
                             {(() => {
-                              const total = opportunity.oi_short + opportunity.oi_long;
-                              const imbalance = (opportunity.oi_long - opportunity.oi_short) / total;
+                              const total = oiShort + oiLong;
+                              const imbalance = (oiLong - oiShort) / total;
                               const favoredSide = imbalance > 0.1 ? 'short' : imbalance < -0.1 ? 'long' : 'balanced';
                               return (
                                 <div className="flex items-center gap-2">
@@ -917,16 +986,16 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
                     </div>
 
                     {/* Current Spread */}
-                    {opportunity.spread_bps !== undefined && (
+                    {opportunity?.spread_bps !== undefined && (
                       <div className="bg-gray-900 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-400">Current Price Spread</span>
                           <div className="text-right">
-                            <span className={`font-mono font-bold ${getSpreadColor(opportunity.spread_bps)}`}>
-                              {opportunity.spread_bps.toFixed(1)} bps
+                            <span className={`font-mono font-bold ${getSpreadColor(opportunity.spread_bps!)}`}>
+                              {opportunity.spread_bps!.toFixed(1)} bps
                             </span>
-                            <span className={`ml-2 font-mono ${getSpreadColor(opportunity.spread_bps)}`}>
-                              ({(opportunity.spread_bps / 100).toFixed(2)}%)
+                            <span className={`ml-2 font-mono ${getSpreadColor(opportunity.spread_bps!)}`}>
+                              ({(opportunity.spread_bps! / 100).toFixed(2)}%)
                             </span>
                           </div>
                         </div>
@@ -937,7 +1006,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose }: Symb
                   <div className="flex flex-col items-center justify-center h-48 text-gray-400">
                     <BarChartIcon className="w-12 h-12 mb-2 opacity-50" />
                     <p>No OI data available</p>
-                    <p className="text-xs mt-1">OI data requires TimescaleDB connection</p>
+                    <p className="text-xs mt-1">OI data missing for this symbol/venue pair</p>
                   </div>
                 )}
               </div>
