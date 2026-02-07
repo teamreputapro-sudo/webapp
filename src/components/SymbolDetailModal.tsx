@@ -78,9 +78,6 @@ interface SymbolStats {
   samples: number;
 }
 
-// API URL from environment variable (empty = same origin in production)
-const API_BASE = import.meta.env.VITE_API_URL || '';
-
 export default function SymbolDetailModal({ symbol, opportunity, onClose, mode = 'modal' }: SymbolDetailModalProps) {
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '15d' | '31d'>('24h');
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
