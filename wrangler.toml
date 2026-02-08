@@ -1,0 +1,8 @@
+name = "scanner-router"
+main = "scanner-router/src/index.js"
+compatibility_date = "2026-01-30"
+
+# This repo also contains the Worker in `scanner-router/`.
+# Cloudflare's Git-integrated Worker deployments often run `wrangler ...` from the repo root,
+# so we keep this root config as a pointer to the real script entrypoint.
+

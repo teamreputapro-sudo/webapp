@@ -20,6 +20,10 @@ From this folder:
 wrangler deploy
 ```
 
+Note:
+- If you're deploying the Worker via Cloudflare's Git integration and it runs `wrangler` from the repo root,
+  the root `wrangler.toml` points to `scanner-router/src/index.js`.
+
 ## 3) Attach the route
 
 ```bash
@@ -32,4 +36,3 @@ wrangler routes add 54strategydigital.com/scanner* --script scanner-router
 - `/scanner/assets/*` → `/assets/*` on Pages
 - `/scanner/anything` (SPA route) → `/index.html`
 - Querystring is preserved
-
