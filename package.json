@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:scanner": "VITE_BASE_PATH=/scanner/ vite",
+    "dev:remote": "VITE_BASE_PATH=/scanner/ vite --config vite.remote.config.ts",
     "build": "tsc && vite build",
     "build:root": "VITE_BASE_PATH=/ npm run build",
     "build:scanner": "VITE_BASE_PATH=/scanner/ npm run build",
