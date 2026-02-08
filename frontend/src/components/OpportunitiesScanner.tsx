@@ -15,7 +15,7 @@ import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
 
 // Available venues (lowercase to match API response)
-const ALL_VENUES = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational'];
+const ALL_VENUES = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational', 'ethereal'];
 
 // Display names for venues
 const VENUE_DISPLAY_NAMES: Record<string, string> = {
@@ -23,7 +23,8 @@ const VENUE_DISPLAY_NAMES: Record<string, string> = {
   'lighter': 'Lighter',
   'pacifica': 'Pacifica',
   'extended': 'Extended',
-  'variational': 'Variational'
+  'variational': 'Variational',
+  'ethereal': 'Ethereal'
 };
 
 // Short abbreviations for venues (used in OI display)
@@ -32,7 +33,8 @@ const VENUE_ABBREV: Record<string, string> = {
   'lighter': 'LIT',
   'pacifica': 'PAC',
   'extended': 'EX',
-  'variational': 'VAR'
+  'variational': 'VAR',
+  'ethereal': 'ETHR'
 };
 
 // Venue accent colors (brand kit)
@@ -41,7 +43,8 @@ const VENUE_COLORS: Record<string, string> = {
   'extended': 'from-emerald-600 to-green-700',        // Dark green
   'pacifica': 'from-sky-400 to-cyan-400',             // Light blue
   'lighter': 'from-slate-400 to-gray-500',            // White/Black (gray)
-  'variational': 'from-purple-500 to-violet-600'      // Grape purple
+  'variational': 'from-purple-500 to-violet-600',     // Grape purple
+  'ethereal': 'from-amber-400 to-orange-500'          // Placeholder (update with brand kit)
 };
 
 // HIP-3 DEX colors (user-deployed perpetuals on Hyperliquid)
@@ -444,6 +447,25 @@ export default function OpportunitiesScanner() {
   if (isInitialLoading) {
     return (
       <div className="space-y-6 animate-fade-in">
+        {import.meta.env.DEV && (
+          <div className="card p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">
+              Venues (UI Registry Preview)
+            </div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {ALL_VENUES.map(venue => (
+                <span
+                  key={venue}
+                  className={'px-3 py-1.5 rounded-lg text-sm font-medium bg-gradient-to-r ' + VENUE_COLORS[venue] + ' text-white'}
+                  title="Dev-only: proves venue is wired in the UI even if API is offline."
+                >
+                  {VENUE_DISPLAY_NAMES[venue]}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Keep a large, stable layout while the API warms up (improves mobile UX and long-tail LCP). */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -474,21 +496,24 @@ export default function OpportunitiesScanner() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="card border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 animate-fade-in">
+  const errorBanner = error ? (
+    <div className="card border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 animate-fade-in">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <AlertCircle className="w-6 h-6 text-red-500" />
           <div>
             <p className="text-red-800 dark:text-red-200 font-semibold">{error}</p>
-            <button onClick={() => fetchData({ bypassLocalCache: true })} className="mt-2 btn btn-secondary text-sm">
-              Retry
-            </button>
+            <p className="text-xs text-red-700/80 dark:text-red-200/80 mt-0.5">
+              UI is still usable; data will populate once the API responds.
+            </p>
           </div>
         </div>
+        <button onClick={() => fetchData({ bypassLocalCache: true })} className="btn btn-secondary text-sm">
+          Retry
+        </button>
       </div>
-    );
-  }
+    </div>
+  ) : null;
 
   const topPerformerCards = [
     { key: 'top_24h', label: 'Avg 24h', icon: Clock, data: topPerformers.top_24h, color: 'from-amber-500 to-orange-500', iconColor: 'text-amber-500', rankColors: ['text-amber-400', 'text-gray-400', 'text-amber-700'] },
@@ -499,6 +524,7 @@ export default function OpportunitiesScanner() {
 
   return (
     <div className="space-y-6">
+      {errorBanner}
       {/* Top Performers Section - Original Style */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {topPerformerCards.map((card, index) => (

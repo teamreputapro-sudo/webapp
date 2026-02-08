@@ -56,6 +56,7 @@ This file is meant to be a short orientation for new sessions.
 
 - `UPGRADE_ARBITRABLE_SYMBOLS.md` — canonical symbol registry + HIP‑3 integration.
 - `UPGRADE_BACKEND.md` — backend changes, cache, DB, and API behavior.
+- `VENUE_INTEGRATION_MASTER.md` — end-to-end checklist to add a venue (DB → backend → UI).
 - `DEPLOY_PAGES_SCANNER_BASEPATH.md` — Pages settings + env.
 - `README.md` — general project overview.
 

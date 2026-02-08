@@ -57,7 +57,13 @@ npm install
 ### Desarrollo
 ```bash
 npm run dev
-# http://localhost:5173/scanner/
+# http://localhost:8080/
+```
+
+Si no tienes el backend corriendo en local, usa proxy a produccion (sin CORS):
+```bash
+npm run dev:remote
+# http://localhost:8080/scanner/
 ```
 
 ### Build
@@ -88,6 +94,7 @@ scanner-router/
 ## Docs clave (contexto rápido)
 
 - `WEBAPP_CONTEXT.md` — contexto general del módulo webapp
+- `VENUE_INTEGRATION_MASTER.md` — manual end-to-end para integrar una venue nueva
 - `DEPLOY_PAGES_SCANNER_BASEPATH.md` — deploy Pages
 - `UPGRADE_ARBITRABLE_SYMBOLS.md` — registro canónico de símbolos (backend)
 - `UPGRADE_BACKEND.md` — cambios recientes backend + DB

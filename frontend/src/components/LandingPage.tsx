@@ -104,6 +104,16 @@ const VENUES = [
     glowColor: 'rgba(139, 92, 246, 0.6)',
     logo: withBase('venue-variational.png')
   },
+  {
+    id: 'ethereal',
+    name: 'Ethereal',
+    short: 'ET',
+    sphereColor: 0x0a0a0a,      // Placeholder
+    logoColor: 0xffb020,        // Amber
+    lineColor: 0xff7a18,        // Orange
+    glowColor: 'rgba(255, 176, 32, 0.6)',
+    logo: withBase('venue-ethereal.png')
+  },
 ];
 
 // ============================================
@@ -1381,7 +1391,7 @@ const VenueNetworkScene = () => {
 
     // ===== CREATE MIDDLE LAYER (5 venue badges in 3D PENTAGON - STATIC) =====
     // 3D Pentagon formation: 1 front, 2 sides, 2 back (like orbital animation)
-    // VENUES order: [Hyperliquid, Lighter, Pacifica, Extended, Variational]
+    // VENUES order: [Hyperliquid, Lighter, Pacifica, Extended, Variational, Ethereal]
     const middleCubes: THREE.Group[] = [];
     const venuePositions: { x: number; z: number; angle: number }[] = [];
 
@@ -2311,13 +2321,13 @@ export default function LandingPage() {
   }, [userInteracted, sceneReady]);
 
   const features = [
-    { icon: Activity, title: 'Real-Time Scanning', description: 'Market data refreshed every ~1 minute across 5 DEX venues.', color: '#00d4ff' },
+    { icon: Activity, title: 'Real-Time Scanning', description: 'Market data refreshed every ~1 minute across 6 DEX venues.', color: '#00d4ff' },
     { icon: Shield, title: 'Delta-Neutral', description: 'Hedge positions across venues. Profit from spreads, not direction.', color: '#00ff9f' },
     { icon: Target, title: 'Self-Custody', description: 'Trade on DEXs only. Your keys, your funds. Zero counterparty risk. (dApps are not exempt from exploits)', color: '#ff00ff' },
   ];
 
   const stats = [
-    { label: 'Venues', value: '5', icon: Layers },
+    { label: 'Venues', value: '6', icon: Layers },
     { label: 'Markets', value: '500+', icon: BarChart3 },
     { label: 'Max APR', value: '150%+', icon: Percent },
     { label: 'Updates', value: 'Live', icon: Clock },
@@ -2392,7 +2402,7 @@ export default function LandingPage() {
 
                 <p className="text-sm text-white/50 mb-5 leading-relaxed">
                   Find delta-neutral opportunities with APRs from 20% to 150%+.
-                  Real-time scanning across 5 DEX venues.
+                  Real-time scanning across 6 DEX venues.
                 </p>
 
                 <div className="flex flex-wrap gap-3">
@@ -2488,7 +2498,7 @@ export default function LandingPage() {
           <ScrollReveal>
             <div className="text-center mb-4">
               <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-2">
-                <span className="text-neon-cyan">5 Venues</span>, One Network
+                <span className="text-neon-cyan">6 Venues</span>, One Network
               </h2>
               <p className="text-white/40 text-sm max-w-lg mx-auto mb-4">
                 Real-time data aggregation from leading decentralized perpetual exchanges, converging into unified intelligence.
@@ -2580,7 +2590,7 @@ export default function LandingPage() {
                     Funding Rate Scanner
                   </h3>
                   <p className="text-white/50 text-sm mb-6 leading-relaxed">
-                    Real-time aggregation of funding rates, spreads, and APR opportunities across 5 DEX venues.
+                    Real-time aggregation of funding rates, spreads, and APR opportunities across 6 DEX venues.
                     Identify the highest-yield delta-neutral positions instantly.
                   </p>
 
@@ -2588,7 +2598,7 @@ export default function LandingPage() {
                   <ul className="space-y-2 mb-6">
                     {[
                       'Real-time funding rates',
-                      '5 DEX venues monitored',
+                      '6 DEX venues monitored',
                       'APR calculations',
                       'Spread analysis'
                     ].map((feature, i) => (
@@ -3112,7 +3122,7 @@ export default function LandingPage() {
                 Ready to Find Opportunities?
               </h2>
               <p className="text-white/40 text-sm mb-6 max-w-md mx-auto">
-                Scan real-time funding rates across 5 DEX venues.
+                Scan real-time funding rates across 6 DEX venues.
               </p>
               <Link
                 to="/"
