@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:root": "VITE_BASE_PATH=/ tsc && vite build",
-    "build:scanner": "VITE_BASE_PATH=/scanner/ tsc && vite build",
+    "build:root": "VITE_BASE_PATH=/ npm run build",
+    "build:scanner": "VITE_BASE_PATH=/scanner/ npm run build",
     "build:prerender": "tsc && vite build && node scripts/prerender.mjs",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",

@@ -9,19 +9,22 @@
  * - /cookies (Cookie Policy)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { TrendingUp, LineChart, BookOpen, Menu, X, WifiOff, AlertCircle, Moon, Sun, Home } from 'lucide-react';
 import OpportunitiesScanner from './components/OpportunitiesScanner';
-import LiveTradingChart from './components/LiveTradingChart';
-import Insights from './components/Insights';
-import ArticlePage from './components/ArticlePage';
 import AdBanner from './components/AdBanner';
 import SEO from './components/SEO';
-import LandingPage from './components/LandingPage';
 import { api } from './services/api';
 import { withBase } from './lib/assetBase';
 import { getLandingPath, getMainPaths, getScannerPath, isScannerMode } from './lib/routerBase';
+
+// Route-level code splitting: keep heavy dependencies (three, charts, article data)
+// out of the initial scanner bundle to reduce long-tail LCP on slow mobile devices.
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const LiveTradingChart = lazy(() => import('./components/LiveTradingChart'));
+const Insights = lazy(() => import('./components/Insights'));
+const ArticlePage = lazy(() => import('./components/ArticlePage'));
 
 // Dark mode hook
 function useDarkMode() {
@@ -913,31 +916,39 @@ export default function App() {
         )}
 
         {/* Routes */}
-        <Routes>
-          {isScannerMode() ? (
-            <>
-              <Route path="/" element={<OpportunitiesScanner />} />
-              <Route path="/home" element={<LandingPage />} />
-            </>
-          ) : (
-            <>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/scanner" element={<OpportunitiesScanner />} />
-            </>
-          )}
-          <Route path="/chart" element={<LiveTradingChart />} />
-          <Route path="/insights" element={<Insights />} />
-          <Route path="/insights/:slug" element={<ArticlePage />} />
-          <Route path="/faq" element={<FAQ />} />
-          <Route path="/glossary" element={<Glossary />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/cookies" element={<CookiePolicy />} />
-          <Route path="/about" element={<AboutUs />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          {/* Fallback based on mode */}
-          <Route path="*" element={isScannerMode() ? <OpportunitiesScanner /> : <LandingPage />} />
-        </Routes>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center h-48 text-gray-400">
+              Loading…
+            </div>
+          }
+        >
+          <Routes>
+            {isScannerMode() ? (
+              <>
+                <Route path="/" element={<OpportunitiesScanner />} />
+                <Route path="/home" element={<LandingPage />} />
+              </>
+            ) : (
+              <>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/scanner" element={<OpportunitiesScanner />} />
+              </>
+            )}
+            <Route path="/chart" element={<LiveTradingChart />} />
+            <Route path="/insights" element={<Insights />} />
+            <Route path="/insights/:slug" element={<ArticlePage />} />
+            <Route path="/faq" element={<FAQ />} />
+            <Route path="/glossary" element={<Glossary />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/cookies" element={<CookiePolicy />} />
+            <Route path="/about" element={<AboutUs />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            {/* Fallback based on mode */}
+            <Route path="*" element={isScannerMode() ? <OpportunitiesScanner /> : <LandingPage />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {/* Bottom Ad Banner - Only show when backend is online */}
