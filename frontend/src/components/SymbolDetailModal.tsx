@@ -99,6 +99,9 @@ type CacheEntry = {
 const DETAIL_CACHE = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 120 * 1000;
 
+const THREED_AVG_CACHE = new Map<string, { ts: number; avgApr3d: number | null }>();
+const THREED_AVG_TTL_MS = 120 * 1000;
+
 const getCacheKey = (
   symbol: string,
   timeframe: string,
@@ -108,12 +111,21 @@ const getCacheKey = (
   return `${symbol}|${timeframe}|${venues.short}|${venues.long}|${venues.dexShort || ''}|${venues.dexLong || ''}`;
 };
 
+const get3dKey = (
+  symbol: string,
+  venues: { short: string; long: string; dexShort?: string | null; dexLong?: string | null } | null
+): string => {
+  if (!venues) return `${symbol}|3d|_all`;
+  return `${symbol}|3d|${venues.short}|${venues.long}|${venues.dexShort || ''}|${venues.dexLong || ''}`;
+};
+
 export default function SymbolDetailModal({ symbol, opportunity, onClose, mode = 'modal' }: SymbolDetailModalProps) {
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '15d' | '31d'>('24h');
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [exchangeInfo, setExchangeInfo] = useState<ExchangeInfo[]>([]);
   const [liveSnapshot, setLiveSnapshot] = useState<LiveSnapshot | null>(null);
   const [symbolStats, setSymbolStats] = useState<SymbolStats[]>([]);
+  const [avgApr3d, setAvgApr3d] = useState<number | null>(null);
   const [simulationAmount, setSimulationAmount] = useState<number>(5000);
   const [simulationDays, setSimulationDays] = useState<number>(1);
   const [loading, setLoading] = useState(true);
@@ -144,6 +156,49 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     const interval = setInterval(fetchLiveData, 30000); // Update every 30s
     return () => clearInterval(interval);
   }, [symbol, timeframe, selectedVenues]);
+
+  // Compute a real 3D average from history (last 72 hours).
+  // We fetch 7d history in the background because the default timeframe is 24h (insufficient for a 3d window).
+  useEffect(() => {
+    const venues = selectedVenues;
+    if (!venues) return;
+    const key = get3dKey(symbol, venues);
+    const cached = THREED_AVG_CACHE.get(key);
+    if (cached && Date.now() - cached.ts < THREED_AVG_TTL_MS) {
+      setAvgApr3d(cached.avgApr3d);
+      return;
+    }
+
+    const compute = async () => {
+      try {
+        let url = buildApiUrl(`/api/symbol-detail/history/${symbol}?timeframe=7d`);
+        url += `&venue_short=${venues.short}&venue_long=${venues.long}`;
+        if (venues.dexShort) url += `&dex_name_short=${encodeURIComponent(venues.dexShort)}`;
+        if (venues.dexLong) url += `&dex_name_long=${encodeURIComponent(venues.dexLong)}`;
+        const res = await axios.get(url);
+        const data: HistoricalData[] = Array.isArray(res.data) ? res.data : [];
+
+        const cutoff = Date.now() - 72 * 60 * 60 * 1000;
+        const values = data
+          .filter((d) => d.venue_short === venues.short && d.venue_long === venues.long)
+          .filter((d) => {
+            const ts = Date.parse(d.timestamp);
+            return Number.isFinite(ts) && ts >= cutoff;
+          })
+          .map((d) => d.spread_apr)
+          .filter((v) => Number.isFinite(v));
+
+        const next = values.length ? (values.reduce((a, b) => a + b, 0) / values.length) : null;
+        THREED_AVG_CACHE.set(key, { ts: Date.now(), avgApr3d: next });
+        setAvgApr3d(next);
+      } catch {
+        THREED_AVG_CACHE.set(key, { ts: Date.now(), avgApr3d: null });
+        setAvgApr3d(null);
+      }
+    };
+
+    compute();
+  }, [symbol, selectedVenues]);
 
   const fetchSymbolData = async () => {
     const cacheKey = getCacheKey(symbol, timeframe, selectedVenues);
@@ -683,18 +738,24 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                   )}
 
                   {/* Current APR info */}
-                  <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Current Spread APR:</span>
-                      <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
-                        {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
-                      </span>
-                    </div>
-                    {opportunity?.apr_7d !== undefined && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Avg APR (7 days):</span>
-                        <span className={`font-bold ${getAPRColor(opportunity.apr_7d)}`}>
-                          {opportunity.apr_7d.toFixed(1)}%
+              <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Current Spread APR:</span>
+                  <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
+                    {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours).">
+                  <span className="text-gray-400">Avg APR (3 days):</span>
+                  <span className={`font-bold ${avgApr3d !== null ? getAPRColor(avgApr3d) : 'text-gray-400'}`}>
+                    {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
+                  </span>
+                </div>
+                {opportunity?.apr_7d !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Avg APR (7 days):</span>
+                    <span className={`font-bold ${getAPRColor(opportunity.apr_7d)}`}>
+                      {opportunity.apr_7d.toFixed(1)}%
                         </span>
                       </div>
                     )}

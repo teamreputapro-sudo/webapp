@@ -106,11 +106,16 @@ export default function OpportunitiesScanner() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [topPerformers, setTopPerformers] = useState<{
     top_24h: TopPerformer[];
+    top_3d: TopPerformer[];
     top_7d: TopPerformer[];
     top_30d: TopPerformer[];
-  }>({ top_24h: [], top_7d: [], top_30d: [] });
+  }>({ top_24h: [], top_3d: [], top_7d: [], top_30d: [] });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
+  const [dataAsOf, setDataAsOf] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -162,6 +167,16 @@ export default function OpportunitiesScanner() {
     fetchData();
   }, [currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
 
+  // Auto-refresh the scanner list. We intentionally bypass the local in-memory cache so that
+  // the list doesn't lag behind the detail view (which polls live snapshot every 30s).
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      fetchData({ bypassLocalCache: true });
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
+
   const computeTopPerformers = (list: Opportunity[]) => {
     if (list.length === 0) {
       return;
@@ -175,11 +190,30 @@ export default function OpportunitiesScanner() {
       samples: o[samplesField] || o.samples
     });
 
+    const estimateApr3d = (apr24h?: number, apr7d?: number): number | undefined => {
+      if (!Number.isFinite(apr24h) || !Number.isFinite(apr7d)) return undefined;
+      // Heuristic estimate when backend doesn't provide a real 72h window:
+      // derived from 24h and 7d averages: (2*apr24h + 7*apr7d)/9.
+      return (2 * (apr24h as number) + 7 * (apr7d as number)) / 9;
+    };
+
     // Only include symbols with sufficient historical data in top performers (exclude recently listed)
     const withSufficientHistory = list.filter((o: Opportunity) => (o.samples_7d || 0) >= MIN_SAMPLES_7D);
 
     const sorted24h = [...withSufficientHistory].sort((a, b) => (b.apr_24h || b.net_apr) - (a.apr_24h || a.net_apr));
     const top3_24h = sorted24h.slice(0, 3).map(o => mapToPerformer(o, 'apr_24h', 'samples_24h'));
+
+    const sorted3d = [...withSufficientHistory]
+      .map((o) => ({ o, apr3d: estimateApr3d(o.apr_24h, o.apr_7d) }))
+      .filter((x): x is { o: Opportunity; apr3d: number } => x.apr3d !== undefined)
+      .sort((a, b) => b.apr3d - a.apr3d);
+    const top3_3d = sorted3d.slice(0, 3).map(({ o, apr3d }) => ({
+      symbol: o.symbol,
+      exchange_short: o.exchange_short,
+      exchange_long: o.exchange_long,
+      apr: apr3d,
+      samples: o.samples_7d || o.samples,
+    }));
 
     const sorted7d = [...withSufficientHistory].sort((a: Opportunity, b: Opportunity) => (b.apr_7d || 0) - (a.apr_7d || 0));
     const top3_7d = sorted7d.slice(0, 3).map(o => mapToPerformer(o, 'apr_7d', 'samples_7d'));
@@ -190,14 +224,17 @@ export default function OpportunitiesScanner() {
 
     setTopPerformers({
       top_24h: top3_24h,
+      top_3d: top3_3d,
       top_7d: top3_7d,
       top_30d: top3_30d
     });
   };
 
-  const fetchData = async () => {
+  const fetchData = async (opts?: { bypassLocalCache?: boolean; hardRefresh?: boolean }) => {
     try {
-      setLoading(true);
+      const initial = opportunities.length === 0;
+      if (initial) setLoading(true);
+      else setRefreshing(true);
 
       const params = {
         min_net_apr: 0,
@@ -210,16 +247,18 @@ export default function OpportunitiesScanner() {
         search: searchQuery || undefined,
         venues: selectedVenues.size === ALL_VENUES.length ? undefined : Array.from(selectedVenues).join(','),
         hide_recently_listed: hideRecentlyListed,
-        hip3_filter: hip3Filter
+        hip3_filter: hip3Filter,
+        ...(opts?.hardRefresh ? { __t: Date.now() } : {}),
       };
 
       const cacheKey = JSON.stringify(params);
       const cached = cacheRef.current.get(cacheKey);
-      if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
+      if (!opts?.bypassLocalCache && cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
         setOpportunities(cached.data);
         setTotalCount(cached.total);
         computeTopPerformers(cached.data);
         setLoading(false);
+        setRefreshing(false);
         return;
       }
 
@@ -242,12 +281,22 @@ export default function OpportunitiesScanner() {
         return;
       }
 
-      const opps = oppsResponse.data.opportunities || [];
+      const opps: Opportunity[] = oppsResponse.data.opportunities || [];
       const baseTotal = oppsResponse.data.total_count || opps.length;
       cacheRef.current.set(cacheKey, { data: opps, total: baseTotal, ts: Date.now() });
       setOpportunities(opps);
       setTotalCount(baseTotal);
       computeTopPerformers(opps);
+      setLastFetchAt(Date.now());
+      try {
+        const maxTs = opps
+          .map((o) => o.timestamp)
+          .filter((t) => !!t)
+          .reduce((acc: string | null, t: string) => (acc && acc > t ? acc : t), null);
+        setDataAsOf(maxTs);
+      } catch {
+        setDataAsOf(null);
+      }
 
       const totalPages = Math.max(1, Math.ceil(baseTotal / ITEMS_PER_PAGE));
       const prefetchPage = async (page: number) => {
@@ -258,7 +307,7 @@ export default function OpportunitiesScanner() {
         if (preCached && (Date.now() - preCached.ts < CACHE_TTL_MS)) return;
         try {
           const res = await axios.get(buildApiUrl('/api/opportunities'), { params: preParams });
-          const preOpps = res.data.opportunities || [];
+          const preOpps: Opportunity[] = res.data.opportunities || [];
           const preTotal = res.data.total_count || preOpps.length;
           cacheRef.current.set(preKey, { data: preOpps, total: preTotal, ts: Date.now() });
         } catch {
@@ -277,6 +326,7 @@ export default function OpportunitiesScanner() {
       console.error(err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -320,6 +370,11 @@ export default function OpportunitiesScanner() {
   };
 
   const formatAPR = (apr: number) => `${apr.toFixed(1)}%`;
+
+  const estimateApr3d = (apr24h?: number, apr7d?: number): number | undefined => {
+    if (!Number.isFinite(apr24h) || !Number.isFinite(apr7d)) return undefined;
+    return (2 * (apr24h as number) + 7 * (apr7d as number)) / 9;
+  };
 
   const renderOI = (opp: Opportunity) => {
     const shortBadge = getOISizeBadge(opp.oi_short);
@@ -426,7 +481,7 @@ export default function OpportunitiesScanner() {
           <AlertCircle className="w-6 h-6 text-red-500" />
           <div>
             <p className="text-red-800 dark:text-red-200 font-semibold">{error}</p>
-            <button onClick={fetchData} className="mt-2 btn btn-secondary text-sm">
+            <button onClick={() => fetchData({ bypassLocalCache: true })} className="mt-2 btn btn-secondary text-sm">
               Retry
             </button>
           </div>
@@ -437,6 +492,7 @@ export default function OpportunitiesScanner() {
 
   const topPerformerCards = [
     { key: 'top_24h', label: 'Avg 24h', icon: Clock, data: topPerformers.top_24h, color: 'from-amber-500 to-orange-500', iconColor: 'text-amber-500', rankColors: ['text-amber-400', 'text-gray-400', 'text-amber-700'] },
+    { key: 'top_3d', label: 'Avg 3 Days*', title: 'Heuristic estimate derived from 24h and 7d averages. For exact 72h, backend must return apr_3d.', icon: Zap, data: topPerformers.top_3d, color: 'from-sky-500 to-indigo-600', iconColor: 'text-sky-500', rankColors: ['text-sky-400', 'text-gray-400', 'text-indigo-400'] },
     { key: 'top_7d', label: 'Avg 7 Days', icon: Calendar, data: topPerformers.top_7d, color: 'from-emerald-500 to-green-500', iconColor: 'text-emerald-500', rankColors: ['text-emerald-400', 'text-gray-400', 'text-emerald-700'] },
     { key: 'top_30d', label: 'Avg 30 Days', icon: CalendarDays, data: topPerformers.top_30d, color: 'from-primary-500 to-cyan-500', iconColor: 'text-primary-500', rankColors: ['text-cyan-400', 'text-gray-400', 'text-cyan-700'] },
   ];
@@ -444,7 +500,7 @@ export default function OpportunitiesScanner() {
   return (
     <div className="space-y-6">
       {/* Top Performers Section - Original Style */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {topPerformerCards.map((card, index) => (
           <div
             key={card.key}
@@ -459,7 +515,7 @@ export default function OpportunitiesScanner() {
                 <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-surface-700">
                   <card.icon className={`w-4 h-4 ${card.iconColor}`} />
                 </div>
-                <span className="data-label">{card.label}</span>
+                <span className="data-label" title={(card as { title?: string }).title}>{card.label}</span>
               </div>
               <Trophy className="w-5 h-5 text-amber-400 opacity-50" />
             </div>
@@ -683,7 +739,45 @@ export default function OpportunitiesScanner() {
             {totalCount} opportunities
             {searchQuery && <span className="text-primary-500"> matching "{searchQuery}"</span>}
           </span>
-          {totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
+          <div className="flex items-center gap-3">
+            {totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
+            {dataAsOf && (
+              <span title="Max opportunity timestamp in the current response">
+                as-of {new Date(dataAsOf).toLocaleTimeString()}
+              </span>
+            )}
+            {lastFetchAt && (
+              <span title="Client fetch time">
+                updated {new Date(lastFetchAt).toLocaleTimeString()}
+              </span>
+            )}
+            {refreshing && <div className="w-3 h-3 spinner" />}
+            <button
+              onClick={() => fetchData({ bypassLocalCache: true })}
+              className="px-2 py-1 rounded bg-gray-100 dark:bg-surface-700 hover:bg-gray-200 dark:hover:bg-surface-600 transition-colors"
+              title="Refresh (bypass local cache). Server may still serve cached data."
+            >
+              Refresh
+            </button>
+            <button
+              onClick={() => fetchData({ bypassLocalCache: true, hardRefresh: true })}
+              className="px-2 py-1 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/30 transition-colors"
+              title="Hard refresh (adds a cache-busting query param). Use sparingly."
+            >
+              Hard
+            </button>
+            <button
+              onClick={() => setAutoRefresh(v => !v)}
+              className={`px-2 py-1 rounded transition-colors ${
+                autoRefresh
+                  ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/30'
+                  : 'bg-gray-100 dark:bg-surface-700 hover:bg-gray-200 dark:hover:bg-surface-600'
+              }`}
+              title="Auto-refresh every 30s"
+            >
+              Auto {autoRefresh ? 'On' : 'Off'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -842,13 +936,14 @@ export default function OpportunitiesScanner() {
               <div className="lg:w-80 flex items-center gap-4">
                 {/* Historical Averages - Separated */}
                 <div className="flex-1">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {[
                       { label: '24h Avg', value: opp.apr_24h },
+                      { label: '3d Avg*', value: estimateApr3d(opp.apr_24h, opp.apr_7d), title: 'Estimated from 24h and 7d averages. Exact 72h requires backend support.' },
                       { label: '7d Avg', value: opp.apr_7d },
                       { label: '30d Avg', value: opp.apr_30d },
                     ].map((period) => (
-                      <div key={period.label} className="text-center p-2 rounded-lg bg-gray-50 dark:bg-surface-800 border border-gray-100 dark:border-surface-700">
+                      <div key={period.label} className="text-center p-2 rounded-lg bg-gray-50 dark:bg-surface-800 border border-gray-100 dark:border-surface-700" title={(period as { title?: string }).title}>
                         <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">{period.label}</div>
                         <div className={`font-mono text-sm font-semibold ${period.value !== undefined ? getAPRColor(period.value) : 'text-gray-400'}`}>
                           {period.value !== undefined ? formatAPR(period.value) : '—'}
