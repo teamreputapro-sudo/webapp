@@ -654,7 +654,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xs text-gray-400">Funding Rate:</div>
+                        <div className="text-xs text-gray-400">Funding Rate (1h):</div>
                         <div className={`text-sm font-bold ${getAPRColor(exchange.apr)}`}>
                           {(exchange.funding_rate * 100).toFixed(4)}%
                         </div>

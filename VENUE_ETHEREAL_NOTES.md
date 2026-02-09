@@ -61,7 +61,12 @@ Proposed mapping (collector -> Timescale):
 - `time`: collector timestamp
 
 APR conversion (backend convention):
-- If `fundingRate1h` is a per-hour rate (decimal), annualized APR estimate:
+- `fundingRate1h` is a per-hour rate **in decimal** (example: `-0.000029994`).
+- UI convention:
+  - show funding as `% per 1h`: `funding_rate_1h_pct = fundingRate1h * 100` (example: `-0.0029994%`)
+  - show APR as annualized percent: `apr_pct = fundingRate1h * 24 * 365 * 100` (example: `-26.27%`)
+
+If `fundingRate1h` is a per-hour rate (decimal), annualized APR estimate:
   - `apr_pct ~= fundingRate1h * 24 * 365 * 100`
   - Confirm with Ethereal docs and spot-check against UI expectations before shipping.
 
