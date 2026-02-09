@@ -70,6 +70,37 @@ If `fundingRate1h` is a per-hour rate (decimal), annualized APR estimate:
   - `apr_pct ~= fundingRate1h * 24 * 365 * 100`
   - Confirm with Ethereal docs and spot-check against UI expectations before shipping.
 
+## Ethereal UI vs API (Why You May See Different APR)
+
+We treat `GET https://api.ethereal.trade/v1/product` as the source of truth for the **current** per-hour funding rate:
+
+- `fundingRate1h` is the current per-hour rate (decimal).
+- We annualize it as `apr_pct = fundingRate1h * 8760 * 100`.
+
+However, Ethereal's UI may show a different APR than the `product` endpoint because it can be displaying:
+
+- A value from the **funding history** endpoint (`/v1/funding`) instead of the current product snapshot.
+- A value from a different **time window** (last hour vs previous hour vs rolling average).
+- A cached UI value that hasn't refreshed yet.
+
+Concrete example (captured 2026-02-09 UTC for `BERAUSD`):
+
+- `GET /v1/product?limit=200` returned:
+  - `fundingRate1h = -0.000209915` -> `apr_pct = -183.88554%`
+- `GET /v1/funding?productId=<BERAUSD>&range=DAY&order=desc` contained other recent hourly points, including:
+  - `fundingRate1h = -0.000228310` -> `apr_pct ~= -200.0%`
+
+If you see `~ -200%` in Ethereal UI while our scanner shows `~ -183.9%`, first verify which value the API reports at that moment:
+
+```bash
+curl -fsS 'https://api.ethereal.trade/v1/product?limit=200' \
+  | python3 -c 'import sys,json; j=json.load(sys.stdin); items=j["data"]; 
+  bera=[x for x in items if x.get("ticker")=="BERAUSD"][0]; 
+  fr=float(bera["fundingRate1h"]); print("fundingRate1h",fr,"apr_pct",fr*8760*100)'
+```
+
+If the API matches our scanner, the discrepancy is not in our normalization. It is a UI/time-window/caching difference.
+
 ## End-To-End Integration References (VPS)
 
 - Collector (v2): `dev/bot-paper-binance-main/tracker_funding_strategy_v2/data_collector/market_collector.py`
