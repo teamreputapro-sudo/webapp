@@ -61,6 +61,23 @@
 
 ---
 
+### 3c) Bounding de símbolos (evitar timeouts en `/api/opportunities`)
+
+- **Síntoma:** `/api/opportunities` podía tardar 20s+ (timeouts en móvil / primer load frío) cuando el dataset creció.
+- **Causa raíz:** el `CROSS JOIN latest l1 x latest l2` escalaba con demasiados símbolos en la CTE `latest_raw`.
+- **Fix:** introducir `candidate_symbols` (spread max-min por símbolo) y limitar el conjunto antes del self-join.
+
+**Archivo:**  
+`webapp/backend/services/timescale_service.py`
+
+Validación rápida (origen, sin nginx):
+```bash
+curl -s -o /dev/null -w 'time_total=%{time_total}\n' \
+  'http://127.0.0.1:8001/api/opportunities?limit=80'
+```
+
+---
+
 ### 4) Continuous aggregate `fr_1h_agg`
 
 Materialized view para promedios por hora (reduce costo de agregados):
@@ -126,14 +143,42 @@ TTL: 60s, stale-while-revalidate 300s.
 
 ---
 
+### 7b) Symbol Detail Stats: incluir HIP-3 dexes (flx/hyna/vntl/...)
+
+- **Síntoma:** en el detalle (`All Venue Combinations`) faltaban combinaciones como:
+  - short `hyperliquid (flx)` vs long `variational/extended/pacifica/...`
+- **Causa raíz:** `get_venue_comparison()` y `get_funding_stats()` agregaban solo por `venue` y requerían `symbol = X`,
+  así que ignoraban filas HIP-3 almacenadas como `dex:SYMBOL` y colapsaban `dex_name`.
+- **Fix:** hacer `dex_name`-aware y, cuando se consulta por símbolo base, incluir también `split_part(symbol, ':', 2) = base`.
+  El endpoint `/api/symbol-detail/stats/{symbol}` ahora devuelve `dex_name_short/dex_name_long`.
+
+**Archivos (VPS):**  
+`webapp/backend/services/timescale_service.py`  
+`webapp/backend/api/routes/symbol_detail.py`
+
+---
+
 ### 9) HIP-3 cache prioritario (primer load rápido)
 
 - **Problema:** primer filtro HIP‑3 era lento porque el backend ignoraba el cache si faltaba histórico
   y hacía fetch a la API pública (multi‑DEX).
-- **Fix:** usar el cache local fresco aunque no tenga histórico para responder rápido;
-  el histórico se mejora en iteraciones posteriores.
+- **Fix:** permitir usar el cache local fresco y además soportar `search` y `top_n > 1`
+  desde archivo, para no perder combinaciones legítimas al filtrar (ej: `hyna:SUI <-> ethereal:SUI`).
 
 **Archivo:**  
+`webapp/backend/api/routes/opportunities_integrated.py`
+
+---
+
+### 9b) `/api/opportunities` debe incluir HIP-3 aunque Timescale devuelva 0
+
+- **Síntoma:** `search=XMR` devolvía 0 porque Timescale no puede cruzar `dex:SYMBOL` con `SYMBOL` (son `symbol` distintos),
+  y el endpoint hacía `return` antes de agregar HIP-3.
+- **Fix:** mover el early-return para que HIP-3 se añada siempre; si solo hay HIP-3, `source = hip3`.
+- **Extra:** cuando `search` está presente, subir `hip3_top_n` efectivo (por defecto a `50`) para no perder combinaciones
+  en símbolos con muchas DEXs HIP-3.
+
+**Archivo (VPS):**  
 `webapp/backend/api/routes/opportunities_integrated.py`
 
 ---
@@ -170,6 +215,19 @@ TTL: 60s, stale-while-revalidate 300s.
 `webapp/frontend/src/components/OpportunitiesScanner.tsx`
 
 ---
+
+### 12) Ethereal: backfill histórico para eliminar "Recently listed"
+
+- **Problema:** al activar una venue nueva (Ethereal), `samples_7d` era bajo y la UI la marcaba como "Recently listed".
+- **Fix:** backfill de funding histórico (30-35d) en `market_snapshots_5m` y refresh explícito de `fr_1h_agg`.
+
+Refs:
+- Script: `tracker_funding_strategy_v2/scripts/backfill_ethereal_funding.py`
+- Refresh cagg:
+```bash
+sudo -u postgres psql -d trading_data -Atc \
+  "CALL refresh_continuous_aggregate('fr_1h_agg', NOW() - INTERVAL '35 days', NOW());"
+```
 
 ## Validaciones
 

@@ -73,6 +73,8 @@ interface SymbolStats {
   symbol: string;
   venue_short: string;
   venue_long: string;
+  dex_name_short?: string | null;
+  dex_name_long?: string | null;
   mean_apr: number;
   median_apr: number;
   sharpe_ratio: number;
@@ -652,7 +654,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xs text-gray-400">Funding Rate:</div>
+                        <div className="text-xs text-gray-400">Funding Rate (1h):</div>
                         <div className={`text-sm font-bold ${getAPRColor(exchange.apr)}`}>
                           {(exchange.funding_rate * 100).toFixed(4)}%
                         </div>
@@ -739,14 +741,14 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
                   {/* Current APR info */}
               <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Current Spread APR:</span>
-                  <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
-                    {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
-                  </span>
-                </div>
-                <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours).">
-                  <span className="text-gray-400">Avg APR (3 days):</span>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Current Spread APR:</span>
+                    <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
+                      {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
+                    </span>
+                  </div>
+                <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours). This is an average, not the current snapshot.">
+                  <span className="text-gray-400">Avg APR (72h):</span>
                   <span className={`font-bold ${avgApr3d !== null ? getAPRColor(avgApr3d) : 'text-gray-400'}`}>
                     {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
                   </span>
@@ -1165,8 +1167,12 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     <tbody>
                       {symbolStats.map((stat, idx) => (
                         <tr key={idx} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                          <td className="py-2 px-3 text-white">{stat.venue_short}</td>
-                          <td className="py-2 px-3 text-white">{stat.venue_long}</td>
+                          <td className="py-2 px-3 text-white">
+                            {stat.venue_short}{stat.dex_name_short ? ` (${stat.dex_name_short})` : ''}
+                          </td>
+                          <td className="py-2 px-3 text-white">
+                            {stat.venue_long}{stat.dex_name_long ? ` (${stat.dex_name_long})` : ''}
+                          </td>
                           <td className={`py-2 px-3 text-right font-mono ${stat.mean_apr > 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {stat.mean_apr.toFixed(1)}%
                           </td>

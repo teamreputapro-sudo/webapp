@@ -36,3 +36,24 @@ Important:
 - UI changes alone do not create data. Real data appears only once the backend emits opportunities with:
   - `exchange_short/exchange_long = "ethereal"` and (optionally) venue-specific metadata.
 
+## Ethereal End-to-End (Collector -> Timescale -> API -> UI)
+
+Ethereal is ingested by the VPS collector (v2) into Timescale, then surfaced by the API and rendered by this UI.
+
+References:
+- Collector wiring (v2): `dev/bot-paper-binance-main/tracker_funding_strategy_v2/data_collector/market_collector.py`
+- Ethereal client (v2): `dev/bot-paper-binance-main/tracker_funding_strategy_v2/venues/ethereal/client.py`
+- Timescale table: `market_snapshots_5m` (VPS, TimescaleDB)
+- Official SDK snapshot (offline): `dev/bot-paper-binance-main/tracker_funding_strategy_v3/ethereal-py-sdk-main/ethereal-py-sdk-main/`
+
+Operational note:
+- The scanner list auto-refreshes every `30s` (see `frontend/src/components/OpportunitiesScanner.tsx`), but production can still lag:
+  - collector interval (typically `300s`)
+  - nginx micro-cache on `/api/opportunities` (often `60s` + stale)
+
+Backend perf notes (VPS):
+- `/api/opportunities` uses Timescale `get_opportunities_with_history`.
+  - It must remain bounded; see the `candidate_symbols` optimization in `webapp/backend/services/timescale_service.py`.
+- HIP-3 opportunities should come from the collector-generated cache file so that `search=...` still returns the right pairs
+  (ex: `hyna:SUI <-> ethereal:SUI`) without recomputation.
+  - See `webapp/backend/api/routes/opportunities_integrated.py` and `UPGRADE_BACKEND.md`.

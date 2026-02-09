@@ -119,6 +119,7 @@ export default function OpportunitiesScanner() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
   const [dataAsOf, setDataAsOf] = useState<string | null>(null);
+  const autoRefreshTick = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -175,10 +176,23 @@ export default function OpportunitiesScanner() {
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
-      fetchData({ bypassLocalCache: true });
+      // The server may still serve cached data (nginx/CF). Do a lightweight cache-bust
+      // periodically so values stay consistent with the detail view.
+      autoRefreshTick.current += 1;
+      const hardRefresh = (autoRefreshTick.current % 4) === 0; // ~ every 2 minutes
+      fetchData({ bypassLocalCache: true, hardRefresh });
     }, 30_000);
     return () => clearInterval(interval);
   }, [autoRefresh, currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
+
+  const formatAsOf = (iso?: string | null): string | null => {
+    if (!iso) return null;
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return null;
+    const ageS = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    const hhmmss = new Date(ms).toLocaleTimeString([], { hour12: false });
+    return `${hhmmss} (${ageS}s ago)`;
+  };
 
   const computeTopPerformers = (list: Opportunity[]) => {
     if (list.length === 0) {
@@ -890,10 +904,15 @@ export default function OpportunitiesScanner() {
               {/* Center: Net APR - Hero */}
               <div className="flex-1 flex justify-center">
                 <div className="text-center px-8 py-3 rounded-xl bg-gray-50 dark:bg-surface-700/50 border border-gray-100 dark:border-surface-600">
-                  <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1 font-medium">Net APR</div>
+                  <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1 font-medium">Net APR (Current)</div>
                   <div className={`font-mono font-bold text-4xl ${getAPRColor(opp.net_apr)} ${getAPRGlow(opp.net_apr)}`}>
                     {formatAPR(opp.net_apr)}
                   </div>
+                  {formatAsOf(opp.timestamp) && (
+                    <div className="mt-1 text-[10px] text-gray-400" title="Timestamp of the snapshot used for this row.">
+                      as-of {formatAsOf(opp.timestamp)}
+                    </div>
+                  )}
                 </div>
               </div>
 
