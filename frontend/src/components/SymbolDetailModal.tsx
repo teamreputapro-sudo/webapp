@@ -741,14 +741,14 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
                   {/* Current APR info */}
               <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Current Spread APR:</span>
-                  <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
-                    {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
-                  </span>
-                </div>
-                <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours).">
-                  <span className="text-gray-400">Avg APR (3 days):</span>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Current Spread APR:</span>
+                    <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
+                      {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
+                    </span>
+                  </div>
+                <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours). This is an average, not the current snapshot.">
+                  <span className="text-gray-400">Avg APR (72h):</span>
                   <span className={`font-bold ${avgApr3d !== null ? getAPRColor(avgApr3d) : 'text-gray-400'}`}>
                     {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
                   </span>
