@@ -47,4 +47,13 @@ References:
 - Official SDK snapshot (offline): `dev/bot-paper-binance-main/tracker_funding_strategy_v3/ethereal-py-sdk-main/ethereal-py-sdk-main/`
 
 Operational note:
-- The scanner can lag up to the collector interval (typically `300s`) because opportunities are computed from the latest Timescale snapshots.
+- The scanner list auto-refreshes every `30s` (see `frontend/src/components/OpportunitiesScanner.tsx`), but production can still lag:
+  - collector interval (typically `300s`)
+  - nginx micro-cache on `/api/opportunities` (often `60s` + stale)
+
+Backend perf notes (VPS):
+- `/api/opportunities` uses Timescale `get_opportunities_with_history`.
+  - It must remain bounded; see the `candidate_symbols` optimization in `webapp/backend/services/timescale_service.py`.
+- HIP-3 opportunities should come from the collector-generated cache file so that `search=...` still returns the right pairs
+  (ex: `hyna:SUI <-> ethereal:SUI`) without recomputation.
+  - See `webapp/backend/api/routes/opportunities_integrated.py` and `UPGRADE_BACKEND.md`.

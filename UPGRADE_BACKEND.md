@@ -61,6 +61,23 @@
 
 ---
 
+### 3c) Bounding de símbolos (evitar timeouts en `/api/opportunities`)
+
+- **Síntoma:** `/api/opportunities` podía tardar 20s+ (timeouts en móvil / primer load frío) cuando el dataset creció.
+- **Causa raíz:** el `CROSS JOIN latest l1 x latest l2` escalaba con demasiados símbolos en la CTE `latest_raw`.
+- **Fix:** introducir `candidate_symbols` (spread max-min por símbolo) y limitar el conjunto antes del self-join.
+
+**Archivo:**  
+`webapp/backend/services/timescale_service.py`
+
+Validación rápida (origen, sin nginx):
+```bash
+curl -s -o /dev/null -w 'time_total=%{time_total}\n' \
+  'http://127.0.0.1:8001/api/opportunities?limit=80'
+```
+
+---
+
 ### 4) Continuous aggregate `fr_1h_agg`
 
 Materialized view para promedios por hora (reduce costo de agregados):
@@ -130,8 +147,8 @@ TTL: 60s, stale-while-revalidate 300s.
 
 - **Problema:** primer filtro HIP‑3 era lento porque el backend ignoraba el cache si faltaba histórico
   y hacía fetch a la API pública (multi‑DEX).
-- **Fix:** usar el cache local fresco aunque no tenga histórico para responder rápido;
-  el histórico se mejora en iteraciones posteriores.
+- **Fix:** permitir usar el cache local fresco y además soportar `search` y `top_n > 1`
+  desde archivo, para no perder combinaciones legítimas al filtrar (ej: `hyna:SUI <-> ethereal:SUI`).
 
 **Archivo:**  
 `webapp/backend/api/routes/opportunities_integrated.py`
@@ -170,6 +187,19 @@ TTL: 60s, stale-while-revalidate 300s.
 `webapp/frontend/src/components/OpportunitiesScanner.tsx`
 
 ---
+
+### 12) Ethereal: backfill histórico para eliminar "Recently listed"
+
+- **Problema:** al activar una venue nueva (Ethereal), `samples_7d` era bajo y la UI la marcaba como "Recently listed".
+- **Fix:** backfill de funding histórico (30-35d) en `market_snapshots_5m` y refresh explícito de `fr_1h_agg`.
+
+Refs:
+- Script: `tracker_funding_strategy_v2/scripts/backfill_ethereal_funding.py`
+- Refresh cagg:
+```bash
+sudo -u postgres psql -d trading_data -Atc \
+  "CALL refresh_continuous_aggregate('fr_1h_agg', NOW() - INTERVAL '35 days', NOW());"
+```
 
 ## Validaciones
 

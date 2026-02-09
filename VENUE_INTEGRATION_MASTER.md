@@ -56,6 +56,20 @@ psql -d trading_data -c \"select venue, count(*) from market_snapshots_5m where 
 psql -d trading_data -c \"select venue, count(*) from arbitrable_symbols group by 1 order by 2 desc;\"
 ```
 
+### 2.1 Backfill Historical Data (Avoid "Recently Listed")
+
+If the new venue is "fresh" in TSDB, the scanner will label it as recently listed because:
+- the list view uses `samples_7d` from `fr_1h_agg`
+- the UI threshold is `MIN_SAMPLES_7D = 120` (7d hourly buckets with buffer)
+
+For venues that provide a public history endpoint (funding), backfill the last 30-35 days into `market_snapshots_5m`.
+
+After inserting historical rows, refresh the continuous aggregate so `samples_7d` updates immediately:
+```bash
+sudo -u postgres psql -d trading_data -Atc \
+  "CALL refresh_continuous_aggregate('fr_1h_agg', NOW() - INTERVAL '35 days', NOW());"
+```
+
 ## 3) Backend Layer (FastAPI)
 
 ### 3.1 `/api/exchanges`
@@ -68,6 +82,15 @@ This endpoint must emit opportunities that include the new venue in:
 
 Important:
 - If Nginx micro-cache is enabled for `/api/opportunities`, you might not see changes for up to ~60s (see `UPGRADE_BACKEND.md`).
+
+### 3.2b HIP-3 vs Non-HIP-3 Comparisons (If Applicable)
+
+If your venue must be compared against HIP-3 markets (ex: Hyperliquid dexes like `hyna`):
+- Ensure HIP-3 opportunities include the venue in `/api/opportunities` even when users `search=...` or filter venues.
+- Prefer serving HIP-3 from the collector-generated cache file (so search doesn't trigger expensive recomputation).
+
+Reference (VPS backend):
+- `webapp/backend/api/routes/opportunities_integrated.py`
 
 ### 3.3 Symbol Detail endpoints
 The UI relies on these endpoints for the detail view:
