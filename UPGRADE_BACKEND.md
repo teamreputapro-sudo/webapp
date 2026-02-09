@@ -170,6 +170,19 @@ TTL: 60s, stale-while-revalidate 300s.
 
 ---
 
+### 9b) `/api/opportunities` debe incluir HIP-3 aunque Timescale devuelva 0
+
+- **Síntoma:** `search=XMR` devolvía 0 porque Timescale no puede cruzar `dex:SYMBOL` con `SYMBOL` (son `symbol` distintos),
+  y el endpoint hacía `return` antes de agregar HIP-3.
+- **Fix:** mover el early-return para que HIP-3 se añada siempre; si solo hay HIP-3, `source = hip3`.
+- **Extra:** cuando `search` está presente, subir `hip3_top_n` efectivo (por defecto a `50`) para no perder combinaciones
+  en símbolos con muchas DEXs HIP-3.
+
+**Archivo (VPS):**  
+`webapp/backend/api/routes/opportunities_integrated.py`
+
+---
+
 ### 10) Warm-cache automático (primer load sin “offline”)
 
 - **Problema:** primer load (cache frío) podía tardar 20–25s y el frontend marcaba backend offline.
