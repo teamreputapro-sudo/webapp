@@ -73,6 +73,8 @@ interface SymbolStats {
   symbol: string;
   venue_short: string;
   venue_long: string;
+  dex_name_short?: string | null;
+  dex_name_long?: string | null;
   mean_apr: number;
   median_apr: number;
   sharpe_ratio: number;
@@ -1165,8 +1167,12 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     <tbody>
                       {symbolStats.map((stat, idx) => (
                         <tr key={idx} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                          <td className="py-2 px-3 text-white">{stat.venue_short}</td>
-                          <td className="py-2 px-3 text-white">{stat.venue_long}</td>
+                          <td className="py-2 px-3 text-white">
+                            {stat.venue_short}{stat.dex_name_short ? ` (${stat.dex_name_short})` : ''}
+                          </td>
+                          <td className="py-2 px-3 text-white">
+                            {stat.venue_long}{stat.dex_name_long ? ` (${stat.dex_name_long})` : ''}
+                          </td>
                           <td className={`py-2 px-3 text-right font-mono ${stat.mean_apr > 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {stat.mean_apr.toFixed(1)}%
                           </td>

@@ -143,6 +143,21 @@ TTL: 60s, stale-while-revalidate 300s.
 
 ---
 
+### 7b) Symbol Detail Stats: incluir HIP-3 dexes (flx/hyna/vntl/...)
+
+- **Síntoma:** en el detalle (`All Venue Combinations`) faltaban combinaciones como:
+  - short `hyperliquid (flx)` vs long `variational/extended/pacifica/...`
+- **Causa raíz:** `get_venue_comparison()` y `get_funding_stats()` agregaban solo por `venue` y requerían `symbol = X`,
+  así que ignoraban filas HIP-3 almacenadas como `dex:SYMBOL` y colapsaban `dex_name`.
+- **Fix:** hacer `dex_name`-aware y, cuando se consulta por símbolo base, incluir también `split_part(symbol, ':', 2) = base`.
+  El endpoint `/api/symbol-detail/stats/{symbol}` ahora devuelve `dex_name_short/dex_name_long`.
+
+**Archivos (VPS):**  
+`webapp/backend/services/timescale_service.py`  
+`webapp/backend/api/routes/symbol_detail.py`
+
+---
+
 ### 9) HIP-3 cache prioritario (primer load rápido)
 
 - **Problema:** primer filtro HIP‑3 era lento porque el backend ignoraba el cache si faltaba histórico
