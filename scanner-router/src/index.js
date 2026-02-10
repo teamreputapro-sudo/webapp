@@ -4,6 +4,13 @@ export default {
 
     if (!url.pathname.startsWith("/scanner")) return fetch(req);
 
+    // /scanner/home should return the canonical home (root domain).
+    // This avoids serving a blank page if the SPA route isn't available for some reason,
+    // and keeps URLs consistent for users sharing links.
+    if (url.pathname === "/scanner/home" || url.pathname === "/scanner/home/") {
+      return Response.redirect(`${url.origin}/`, 302);
+    }
+
     const PAGES_ORIGIN = "https://webapp-cwo.pages.dev";
 
     const isAssetsPath = url.pathname.startsWith("/scanner/assets/");
