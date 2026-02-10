@@ -23,11 +23,15 @@ Webapp now knows the venue id `ethereal` so it can render labels/colors/logos on
 - Display: `Ethereal`
 - Abbrev (UI): `ETHR`
 
-## Market Data: Key Endpoint
+## Market Data: Key Endpoints
 
 The Trading API exposes products that include funding and OI:
 - `GET /v1/product` (list products)
   - Fields we care about: `ticker`, `fundingRate1h`, `openInterest`, `volume24h`, etc.
+
+To align with what most users perceive as the "displayed" funding rate, we also use funding history:
+- `GET /v1/funding?productId=<uuid>&range=DAY&limit=1&order=desc`
+  - We treat this as the **latest realized** funding point.
 
 Docs:
 ```text
@@ -70,12 +74,17 @@ If `fundingRate1h` is a per-hour rate (decimal), annualized APR estimate:
   - `apr_pct ~= fundingRate1h * 24 * 365 * 100`
   - Confirm with Ethereal docs and spot-check against UI expectations before shipping.
 
-## Ethereal UI vs API (Why You May See Different APR)
+## Ethereal UI vs API (How We Avoid Confusion)
 
-We treat `GET https://api.ethereal.trade/v1/product` as the source of truth for the **current** per-hour funding rate:
+We standardize Ethereal funding as follows:
 
-- `fundingRate1h` is the current per-hour rate (decimal).
-- We annualize it as `apr_pct = fundingRate1h * 8760 * 100`.
+- Funding shown in our scanner/backtests uses the **latest realized** point from:
+  - `GET https://api.ethereal.trade/v1/funding?productId=<uuid>&range=DAY&limit=1&order=desc`
+- We still use `GET /v1/product` for:
+  - symbol list (tickers, ids)
+  - OI/volume (and market-price enrichment)
+
+This eliminates the common confusion where Ethereal UI appears to show a different APR than our "current" snapshot.
 
 However, Ethereal's UI may show a different APR than the `product` endpoint because it can be displaying:
 
@@ -83,23 +92,30 @@ However, Ethereal's UI may show a different APR than the `product` endpoint beca
 - A value from a different **time window** (last hour vs previous hour vs rolling average).
 - A cached UI value that hasn't refreshed yet.
 
-Concrete example (captured 2026-02-09 UTC for `BERAUSD`):
+Concrete example (captured 2026-02-10 UTC for `BERAUSD`):
 
-- `GET /v1/product?limit=200` returned:
-  - `fundingRate1h = -0.000209915` -> `apr_pct = -183.88554%`
-- `GET /v1/funding?productId=<BERAUSD>&range=DAY&order=desc` contained other recent hourly points, including:
+- `GET /v1/funding?...limit=1&order=desc` returned:
   - `fundingRate1h = -0.000228310` -> `apr_pct ~= -200.0%`
+- Timescale stored the same value in `market_snapshots_5m.funding_rate_1h` for venue `ethereal`.
 
-If you see `~ -200%` in Ethereal UI while our scanner shows `~ -183.9%`, first verify which value the API reports at that moment:
+If you see a mismatch, verify what the API reports at that moment:
 
 ```bash
 curl -fsS 'https://api.ethereal.trade/v1/product?limit=200' \
   | python3 -c 'import sys,json; j=json.load(sys.stdin); items=j["data"]; 
   bera=[x for x in items if x.get("ticker")=="BERAUSD"][0]; 
   fr=float(bera["fundingRate1h"]); print("fundingRate1h",fr,"apr_pct",fr*8760*100)'
+
+# Latest realized funding point:
+curl -fsS 'https://api.ethereal.trade/v1/funding?productId=<BERAUSD>&range=DAY&limit=1&order=desc'
 ```
 
-If the API matches our scanner, the discrepancy is not in our normalization. It is a UI/time-window/caching difference.
+## Implementation Detail
+
+Collector behavior is implemented in:
+- `dev/bot-paper-binance-main/tracker_funding_strategy_v2/venues/ethereal/client.py`
+  - `PREFER_LATEST_FUNDING_POINT = True`
+  - fetches the latest funding point per product id and falls back to `/v1/product` if needed.
 
 ## End-To-End Integration References (VPS)
 
