@@ -20,6 +20,20 @@ import { api } from './services/api';
 import { withBase } from './lib/assetBase';
 import { getLandingPath, getMainPaths, getScannerDetailRoute, getScannerPath, isScannerMode } from './lib/routerBase';
 
+const ExitScannerToRoot = () => {
+  useEffect(() => {
+    // /scanner/home is a legacy-ish URL. We want it to behave like the canonical home: "/".
+    // Use a hard navigation to escape the /scanner basepath.
+    window.location.replace(`${window.location.origin}/`);
+  }, []);
+
+  return (
+    <div className="card animate-fade-in">
+      <div className="text-sm text-gray-600 dark:text-gray-400">Redirecting to Home…</div>
+    </div>
+  );
+};
+
 const ScannerRedirect = () => {
   useEffect(() => {
     const { pathname, search, hash } = window.location;
@@ -948,7 +962,7 @@ export default function App() {
               <>
                 <Route path="/" element={<OpportunitiesScanner />} />
                 <Route path={getScannerDetailRoute()} element={<SymbolDetailRoute />} />
-                <Route path="/home" element={<LandingPage />} />
+                <Route path="/home" element={<ExitScannerToRoot />} />
               </>
             ) : (
               <>
