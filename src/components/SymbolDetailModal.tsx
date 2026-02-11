@@ -103,6 +103,8 @@ const CACHE_TTL_MS = 120 * 1000;
 
 const THREED_AVG_CACHE = new Map<string, { ts: number; avgApr3d: number | null }>();
 const THREED_AVG_TTL_MS = 120 * 1000;
+const LONGTERM_AVG_CACHE = new Map<string, { ts: number; avgApr7d: number | null; avgApr30d: number | null }>();
+const LONGTERM_AVG_TTL_MS = 120 * 1000;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
 const ZOOM_STEP = 1.5;
@@ -124,6 +126,14 @@ const get3dKey = (
   return `${symbol}|3d|${venues.short}|${venues.long}|${venues.dexShort || ''}|${venues.dexLong || ''}`;
 };
 
+const getLongtermKey = (
+  symbol: string,
+  venues: { short: string; long: string; dexShort?: string | null; dexLong?: string | null } | null
+): string => {
+  if (!venues) return `${symbol}|31d|_all`;
+  return `${symbol}|31d|${venues.short}|${venues.long}|${venues.dexShort || ''}|${venues.dexLong || ''}`;
+};
+
 export default function SymbolDetailModal({ symbol, opportunity, onClose, mode = 'modal' }: SymbolDetailModalProps) {
   const [timeframe, setTimeframe] = useState<'24h' | '3d' | '7d' | '15d' | '31d'>('24h');
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
@@ -131,6 +141,8 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
   const [liveSnapshot, setLiveSnapshot] = useState<LiveSnapshot | null>(null);
   const [symbolStats, setSymbolStats] = useState<SymbolStats[]>([]);
   const [avgApr3d, setAvgApr3d] = useState<number | null>(null);
+  const [avgApr7dDerived, setAvgApr7dDerived] = useState<number | null>(null);
+  const [avgApr30dDerived, setAvgApr30dDerived] = useState<number | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [simulationAmount, setSimulationAmount] = useState<number>(5000);
   const [simulationDays, setSimulationDays] = useState<number>(1);
@@ -204,6 +216,62 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
       } catch {
         THREED_AVG_CACHE.set(key, { ts: Date.now(), avgApr3d: null });
         setAvgApr3d(null);
+      }
+    };
+
+    compute();
+  }, [symbol, selectedVenues]);
+
+  // Compute 7d / 30d averages from 31d history so header stats are available even when route state is partial.
+  useEffect(() => {
+    const venues = selectedVenues;
+    if (!venues) return;
+    const key = getLongtermKey(symbol, venues);
+    const cached = LONGTERM_AVG_CACHE.get(key);
+    if (cached && Date.now() - cached.ts < LONGTERM_AVG_TTL_MS) {
+      setAvgApr7dDerived(cached.avgApr7d);
+      setAvgApr30dDerived(cached.avgApr30d);
+      return;
+    }
+
+    const compute = async () => {
+      try {
+        let url = buildApiUrl(`/api/symbol-detail/history/${symbol}?timeframe=31d`);
+        url += `&venue_short=${venues.short}&venue_long=${venues.long}`;
+        if (venues.dexShort) url += `&dex_name_short=${encodeURIComponent(venues.dexShort)}`;
+        if (venues.dexLong) url += `&dex_name_long=${encodeURIComponent(venues.dexLong)}`;
+        const res = await axios.get(url);
+        const data: HistoricalData[] = Array.isArray(res.data) ? res.data : [];
+        const filtered = data.filter((d) => d.venue_short === venues.short && d.venue_long === venues.long);
+        const now = Date.now();
+        const cutoff7d = now - 7 * 24 * 60 * 60 * 1000;
+        const cutoff30d = now - 30 * 24 * 60 * 60 * 1000;
+
+        const values7d = filtered
+          .filter((d) => {
+            const ts = Date.parse(d.timestamp);
+            return Number.isFinite(ts) && ts >= cutoff7d;
+          })
+          .map((d) => d.spread_apr)
+          .filter((v) => Number.isFinite(v));
+
+        const values30d = filtered
+          .filter((d) => {
+            const ts = Date.parse(d.timestamp);
+            return Number.isFinite(ts) && ts >= cutoff30d;
+          })
+          .map((d) => d.spread_apr)
+          .filter((v) => Number.isFinite(v));
+
+        const avg7d = values7d.length ? values7d.reduce((a, b) => a + b, 0) / values7d.length : null;
+        const avg30d = values30d.length ? values30d.reduce((a, b) => a + b, 0) / values30d.length : null;
+        LONGTERM_AVG_CACHE.set(key, { ts: Date.now(), avgApr7d: avg7d, avgApr30d: avg30d });
+        setAvgApr7dDerived(avg7d);
+        setAvgApr30dDerived(avg30d);
+      } catch {
+        LONGTERM_AVG_CACHE.set(key, { ts: Date.now(), avgApr7d: null, avgApr30d: null });
+        setAvgApr7dDerived(null);
+        setAvgApr30dDerived(null);
       }
     };
 
@@ -518,6 +586,8 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
   const currentNetApr = liveSnapshot?.funding_delta_apr ?? opportunity?.net_apr ?? avgApr3d ?? 0;
   const currentSpreadBps = liveSnapshot?.price_spread_bps ?? opportunity?.spread_bps ?? 0;
+  const headerAvg7d = opportunity?.apr_7d ?? avgApr7dDerived;
+  const headerAvg30d = opportunity?.apr_30d ?? avgApr30dDerived;
 
   const wrapperClass = mode === 'modal'
     ? 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
@@ -564,8 +634,8 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                   {[
                     { label: '24h Avg', value: avgApr24h },
                     { label: '3d Avg', value: avgApr3d },
-                    { label: '7d Avg', value: opportunity?.apr_7d },
-                    { label: '30d Avg', value: opportunity?.apr_30d },
+                    { label: '7d Avg', value: headerAvg7d },
+                    { label: '30d Avg', value: headerAvg30d },
                   ].map((metric) => (
                     <div key={metric.label} className="rounded-md border border-gray-700 bg-gray-900/40 px-2 py-2 text-center min-w-0">
                       <div className="text-[10px] text-gray-400 uppercase tracking-wide">{metric.label}</div>
@@ -1160,19 +1230,19 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
                       </span>
                     </div>
-                    {opportunity?.apr_7d !== undefined && (
+                    {headerAvg7d !== undefined && headerAvg7d !== null && (
                       <div className="flex justify-between">
                         <span className="text-gray-400">Avg APR (7 days):</span>
-                        <span className={`font-bold ${getAPRColor(opportunity.apr_7d)}`}>
-                          {opportunity.apr_7d.toFixed(1)}%
+                        <span className={`font-bold ${getAPRColor(headerAvg7d)}`}>
+                          {headerAvg7d.toFixed(1)}%
                         </span>
                       </div>
                     )}
-                    {opportunity?.apr_30d !== undefined && (
+                    {headerAvg30d !== undefined && headerAvg30d !== null && (
                       <div className="flex justify-between">
                         <span className="text-gray-400">Avg APR (30 days):</span>
-                        <span className={`font-bold ${getAPRColor(opportunity.apr_30d)}`}>
-                          {opportunity.apr_30d.toFixed(1)}%
+                        <span className={`font-bold ${getAPRColor(headerAvg30d)}`}>
+                          {headerAvg30d.toFixed(1)}%
                         </span>
                       </div>
                     )}
