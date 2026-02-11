@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, TrendingUp, TrendingDown, Activity, DollarSign, Download, Info, Flame, Search, Table2, ZoomIn, ZoomOut, BarChart3 as BarChartIcon } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Activity, DollarSign, Download, Info, Flame, ZoomIn, ZoomOut, BarChart3 as BarChartIcon } from 'lucide-react';
 import { Line, LineChart, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from 'recharts';
 import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
@@ -532,69 +532,35 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
       <div className={panelClass}>
         {/* Header */}
         <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 z-10">
-          <div className="flex items-start justify-between gap-4">
-            <div className="shrink-0">
+          <div className="flex flex-col xl:flex-row xl:items-center gap-4">
+            <div className="shrink-0 xl:min-w-[150px]">
               <h2 className="text-2xl font-bold text-white">{symbol}</h2>
               <p className="text-gray-400 text-sm mt-1">Funding Analysis</p>
             </div>
 
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors border border-gray-700/70"
-            >
-              <X className="w-6 h-6 text-gray-400" />
-            </button>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-cyan-900/30 bg-[#070b1c] px-4 py-3 overflow-hidden">
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 xl:gap-4 items-stretch">
-              <div className="xl:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-2">
-                  <div className="text-[10px] uppercase text-red-300 tracking-wide">Short · {selectedVenues?.short || shortEx?.name || '—'}</div>
-                  <div className={`font-mono text-xl font-bold ${getAPRColor(shortEx?.apr || 0)}`}>
-                    {shortEx ? formatAPR(shortEx.apr) : '—'}
+            <div className="flex-1 min-w-0 rounded-xl border border-cyan-900/30 bg-[#070b1c] px-4 py-3 overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-4 rounded-lg border border-cyan-800/50 bg-cyan-900/10 px-4 py-3 text-center flex flex-col justify-center">
+                  <div className="text-xs uppercase tracking-wide text-gray-400">Net APR (Current)</div>
+                  <div className={`font-mono text-3xl xl:text-4xl font-bold ${getAPRColor(currentNetApr)}`}>
+                    {formatAPR(currentNetApr)}
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-1">
+                    as-of {liveSnapshot ? new Date(liveSnapshot.last_update).toLocaleTimeString() : 'N/A'}
                   </div>
                 </div>
-                <div className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2">
-                  <div className="text-[10px] uppercase text-emerald-300 tracking-wide">Long · {selectedVenues?.long || longEx?.name || '—'}</div>
-                  <div className={`font-mono text-xl font-bold ${getAPRColor(longEx?.apr || 0)}`}>
-                    {longEx ? formatAPR(longEx.apr) : '—'}
-                  </div>
-                </div>
-              </div>
 
-              <div className="xl:col-span-3 rounded-lg border border-cyan-800/50 bg-cyan-900/10 px-4 py-2 text-center flex flex-col justify-center">
-                <div className="text-xs uppercase tracking-wide text-gray-400">Net APR (Current)</div>
-                <div className={`font-mono text-3xl xl:text-4xl font-bold ${getAPRColor(currentNetApr)}`}>
-                  {formatAPR(currentNetApr)}
-                </div>
-                <div className="text-[11px] text-gray-500 mt-1">
-                  as-of {liveSnapshot ? new Date(liveSnapshot.last_update).toLocaleTimeString() : 'N/A'}
-                </div>
-              </div>
-
-              <div className="xl:col-span-3 grid grid-cols-1 gap-2">
-                <div className="rounded-lg border border-blue-800/60 bg-blue-900/10 px-3 py-2">
+                <div className="md:col-span-4 rounded-lg border border-blue-800/60 bg-blue-900/10 px-4 py-3 flex flex-col justify-center">
                   <div className="text-[10px] uppercase text-gray-400 tracking-wide">Price Spread</div>
-                  <div className="font-mono text-lg xl:text-xl text-emerald-400 font-semibold">
+                  <div className="font-mono text-xl text-emerald-400 font-semibold">
                     {currentSpreadBps >= 0 ? '+' : ''}{currentSpreadBps.toFixed(1)} bps
-                    <span className="text-sm text-emerald-300 ml-2">
-                      ({currentSpreadBps >= 0 ? '+' : ''}{(currentSpreadBps / 100).toFixed(2)}%)
-                    </span>
+                  </div>
+                  <div className="text-sm text-emerald-300">
+                    ({currentSpreadBps >= 0 ? '+' : ''}{(currentSpreadBps / 100).toFixed(2)}%)
                   </div>
                 </div>
-                <div className="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2">
-                  <div className="text-[10px] uppercase text-gray-400 tracking-wide">Open Interest</div>
-                  <div className="text-sm text-gray-200 flex flex-wrap items-center gap-2">
-                    <span className="text-red-300">{(selectedVenues?.short || shortEx?.name || 'S').toUpperCase().slice(0, 4)} {formatOI(oiShort || undefined)}</span>
-                    <span className="text-gray-500">|</span>
-                    <span className="text-emerald-300">{(selectedVenues?.long || longEx?.name || 'L').toUpperCase().slice(0, 4)} {formatOI(oiLong || undefined)}</span>
-                  </div>
-                </div>
-              </div>
 
-              <div className="xl:col-span-3 flex items-center justify-between gap-2">
-                <div className="grid grid-cols-2 gap-2 flex-1 min-w-0">
+                <div className="md:col-span-4 grid grid-cols-2 gap-2">
                   {[
                     { label: '24h Avg', value: avgApr24h },
                     { label: '3d Avg', value: avgApr3d },
@@ -609,13 +575,15 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     </div>
                   ))}
                 </div>
-                <div className="flex flex-col gap-2">
-                  <button className="p-2 rounded-md bg-cyan-900/30 border border-cyan-700/50 text-cyan-300"><Search className="w-4 h-4" /></button>
-                  <button className="p-2 rounded-md bg-emerald-900/30 border border-emerald-700/50 text-emerald-300"><Table2 className="w-4 h-4" /></button>
-                  <button className="p-2 rounded-md bg-amber-900/30 border border-amber-700/50 text-amber-300"><BarChartIcon className="w-4 h-4" /></button>
-                </div>
               </div>
             </div>
+
+            <button
+              onClick={onClose}
+              className="self-start xl:self-center p-2 hover:bg-gray-800 rounded-lg transition-colors border border-gray-700/70"
+            >
+              <X className="w-6 h-6 text-gray-400" />
+            </button>
           </div>
         </div>
 
