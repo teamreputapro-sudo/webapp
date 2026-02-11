@@ -731,6 +731,12 @@ export default function App() {
 
   const currentNav = navigation.find(n => n.path === location.pathname) || navigation[0];
   const isMainPage = getMainPaths().includes(location.pathname);
+  // Treat legacy direct paths as "Landing/Home" too, so AdSense banners don't leave gaps there.
+  const isLandingPage =
+    location.pathname === landingPath ||
+    location.pathname === '/home' ||
+    location.pathname === '/index.html';
+  const showAdBanners = !isLandingPage;
 
   return (
     <div className="min-h-screen transition-colors flex flex-col">
@@ -788,6 +794,7 @@ export default function App() {
                   <Link
                     key={item.path}
                     to={item.path}
+                    reloadDocument={item.path === scannerPath && !isScannerMode()}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium font-display transition-all duration-200 ${
                       isActive
                         ? 'bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-neon-cyan shadow-sm dark:shadow-neon-cyan/10'
@@ -851,6 +858,7 @@ export default function App() {
                   <Link
                     key={item.path}
                     to={item.path}
+                    reloadDocument={item.path === scannerPath && !isScannerMode()}
                     className={`flex items-center space-x-3 w-full px-4 py-3 rounded-lg font-medium font-display transition-all duration-200 animate-fade-in-up`}
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
@@ -867,10 +875,16 @@ export default function App() {
         )}
       </header>
 
-      {/* Top Ad Banner - Only show when backend is online and on content pages */}
-      {backendStatus === 'online' && (
+      {/* Top Ad Banner (not on Landing/Home). Reserve space to avoid CLS while backendStatus flips. */}
+      {showAdBanners && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 w-full">
-          <AdBanner slot="2893729326" format="auto" className="mb-2" />
+          <AdBanner
+            slot="2893729326"
+            format="auto"
+            className="mb-2"
+            enabled={backendStatus === 'online'}
+            reserve="auto"
+          />
         </div>
       )}
 
@@ -951,10 +965,16 @@ export default function App() {
         </Suspense>
       </main>
 
-      {/* Bottom Ad Banner - Only show when backend is online */}
-      {backendStatus === 'online' && (
+      {/* Bottom Ad Banner (not on Landing/Home). Reserve space to avoid CLS while backendStatus flips. */}
+      {showAdBanners && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 w-full">
-          <AdBanner slot="3776222694" format="auto" className="mt-4" />
+          <AdBanner
+            slot="3776222694"
+            format="auto"
+            className="mt-4"
+            enabled={backendStatus === 'online'}
+            reserve="auto"
+          />
         </div>
       )}
 

@@ -758,6 +758,12 @@ export default function App() {
 
   const currentNav = navigation.find(n => n.path === location.pathname) || navigation[0];
   const isMainPage = getMainPaths().includes(location.pathname);
+  // Treat legacy direct paths as "Landing/Home" too, so AdSense banners don't leave gaps there.
+  // This also covers users hitting `/home` directly in root mode (fallback route).
+  const isLandingPage =
+    location.pathname === landingPath ||
+    location.pathname === '/home' ||
+    location.pathname === '/index.html';
 
   return (
     <div className="min-h-screen transition-colors flex flex-col">
@@ -896,15 +902,17 @@ export default function App() {
       </header>
 
       {/* Top Ad Banner: reserve space to prevent CLS (backendStatus flips after health check). */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 w-full">
-        <AdBanner
-          slot="2893729326"
-          format="auto"
-          className="mb-2"
-          enabled={backendStatus === 'online'}
-          reserve="auto"
-        />
-      </div>
+      {!isLandingPage && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 w-full">
+          <AdBanner
+            slot="2893729326"
+            format="auto"
+            className="mb-2"
+            enabled={backendStatus === 'online'}
+            reserve="auto"
+          />
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow w-full">
@@ -988,15 +996,17 @@ export default function App() {
       </main>
 
       {/* Bottom Ad Banner: reserve space to prevent CLS. */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 w-full">
-        <AdBanner
-          slot="3776222694"
-          format="auto"
-          className="mt-4"
-          enabled={backendStatus === 'online'}
-          reserve="auto"
-        />
-      </div>
+      {!isLandingPage && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 w-full">
+          <AdBanner
+            slot="3776222694"
+            format="auto"
+            className="mt-4"
+            enabled={backendStatus === 'online'}
+            reserve="auto"
+          />
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="mt-auto border-t border-gray-200 dark:border-surface-700 bg-white/50 dark:bg-surface-900/50 backdrop-blur-sm">

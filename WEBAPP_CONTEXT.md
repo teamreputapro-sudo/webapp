@@ -52,6 +52,23 @@ This file is meant to be a short orientation for new sessions.
 
 ---
 
+## AdSense (Home)
+
+The root site (`/`) is served from the VPS, but the frontend bundle still includes AdSense wiring.
+
+- AdSense script tag lives in `index.html` (and is also present in `frontend/index.html`; legacy subtree).
+  - It is built into the final `dist/index.html` for the root build (VPS home).
+- React ad units are rendered via `src/components/AdBanner.tsx` (and also `frontend/src/components/AdBanner.tsx`).
+- Slot IDs (current):
+  - Top: `2893729326`
+  - Bottom: `3776222694`
+- Banners are hidden on the landing/home route (`getLandingPath()`).
+  - In root mode this is `/`.
+  - In scanner mode the "Home" link is `/scanner/home` which hard-navigates back to `/`.
+  - Legacy direct paths are also treated as landing: `/home`, `/index.html`.
+
+---
+
 ## Where to read more
 
 - `UPGRADE_ARBITRABLE_SYMBOLS.md` — canonical symbol registry + HIP‑3 integration.
