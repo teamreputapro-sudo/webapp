@@ -3,7 +3,7 @@
 > **Status:** EN PRODUCCION
 > **Scanner URL:** https://54strategydigital.com/scanner/
 > **Root URL:** https://54strategydigital.com/
-> **Ultima actualizacion:** 2026-02-07
+> **Ultima actualizacion:** 2026-02-11
 
 ---
 
@@ -158,6 +158,18 @@ curl -s https://54strategydigital.com/ | head -20
 - Simulador de profit
 - Calculo de fees
 - ROI y APR estimados
+
+### Symbol Detail (Scanner)
+- Nuevo panel resumen superior estilo "dusk panel" en el detalle de simbolo (`/scanner/s/:symbol`).
+- Nuevo timeframe `3d` en el grafico de Funding Spread.
+  - Implementacion UI: usa datos `7d` y recorta a las ultimas 72h.
+- Zoom in / zoom out unificado para:
+  - Funding Spread (APR)
+  - Funding Rates (Short vs Long)
+  - Price Spread History
+- Reordenado visual:
+  - `Price Spread History` sube al bloque intermedio principal.
+  - `Profit Simulator` pasa al bloque final.
 
 ---
 

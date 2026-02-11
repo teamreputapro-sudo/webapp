@@ -69,6 +69,32 @@ The root site (`/`) is served from the VPS, but the frontend bundle still includ
 
 ---
 
+## Symbol Detail UX (2026-02-11)
+
+Scanner detail view (`/scanner/s/:symbol`) was updated in both source trees:
+- `frontend/src/components/SymbolDetailModal.tsx`
+- `src/components/SymbolDetailModal.tsx`
+
+Implemented:
+- New summary header panel ("dusk panel" style) in the top area of symbol detail.
+  - Includes short/long APR, net APR current, price spread, OI and period summaries.
+- New `3d` button in the timeframe selector.
+  - API compatibility: the UI requests `7d` history and crops to the last 72h to render `3d`.
+- Added zoom controls (`+` / `-`) for chart data window.
+  - Zoom now applies consistently to:
+    - Funding Spread (APR)
+    - Funding Rates (Short vs Long)
+    - Price Spread History
+- Layout reorder:
+  - `Price Spread History` moved up to the row where the simulator was.
+  - `Profit Simulator` moved to the final block of the detail page.
+
+Verification notes:
+- `npm run build` in `frontend/` passes.
+- `npm run build:root` in repo root passes.
+
+---
+
 ## Where to read more
 
 - `UPGRADE_ARBITRABLE_SYMBOLS.md` — canonical symbol registry + HIP‑3 integration.
