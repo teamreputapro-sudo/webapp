@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, Activity, DollarSign, Download, Info, Flame, Search, Table2, ZoomIn, ZoomOut, BarChart3 as BarChartIcon } from 'lucide-react';
-import { Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from 'recharts';
+import { Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from 'recharts';
 import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
 
@@ -532,14 +532,14 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
       <div className={panelClass}>
         {/* Header */}
         <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 z-10">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-            <div className="lg:w-44 shrink-0">
+          <div className="flex flex-col lg:flex-row lg:items-stretch gap-4">
+            <div className="lg:min-w-[140px] shrink-0">
               <h2 className="text-2xl font-bold text-white">{symbol}</h2>
               <p className="text-gray-400 text-sm mt-1">Funding Rate Analysis</p>
             </div>
 
-            <div className="flex-1 min-w-0 rounded-xl border border-cyan-900/30 bg-[#070b1c] px-4 py-3">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+            <div className="flex-1 min-w-0 rounded-xl border border-cyan-900/30 bg-[#070b1c] px-4 py-3 overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 xl:gap-4 items-center">
                 <div className="md:col-span-3 grid grid-cols-2 gap-2">
                   <div className="rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-2">
                     <div className="text-[10px] uppercase text-red-300 tracking-wide">Short · {selectedVenues?.short || shortEx?.name || '—'}</div>
@@ -585,16 +585,16 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                 </div>
 
                 <div className="md:col-span-3 flex items-center justify-between gap-2">
-                  <div className="grid grid-cols-4 gap-2 flex-1">
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 flex-1 min-w-0">
                     {[
                       { label: '24h Avg', value: avgApr24h },
                       { label: '3d Avg', value: avgApr3d },
                       { label: '7d Avg', value: opportunity?.apr_7d },
                       { label: '30d Avg', value: opportunity?.apr_30d },
                     ].map((metric) => (
-                      <div key={metric.label} className="rounded-md border border-gray-700 bg-gray-900/40 px-2 py-2 text-center">
-                        <div className="text-[10px] text-gray-400 uppercase">{metric.label}</div>
-                        <div className={`text-lg font-mono font-semibold ${metric.value !== undefined && metric.value !== null ? getAPRColor(metric.value) : 'text-gray-500'}`}>
+                      <div key={metric.label} className="rounded-md border border-gray-700 bg-gray-900/40 px-2 py-2 text-center min-w-0">
+                        <div className="text-[10px] text-gray-400 uppercase tracking-wide">{metric.label}</div>
+                        <div className={`text-base xl:text-lg font-mono font-semibold whitespace-nowrap ${metric.value !== undefined && metric.value !== null ? getAPRColor(metric.value) : 'text-gray-500'}`}>
                           {metric.value !== undefined && metric.value !== null ? `${metric.value.toFixed(1)}%` : '—'}
                         </div>
                       </div>
@@ -914,16 +914,21 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
               </div>
 
               {/* Funding Rates by Venue Chart */}
-              <div className="bg-gray-800 rounded-xl p-6">
+              <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/60">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">
-                    Funding Rates (Short vs Long)
-                  </h3>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">
+                      Funding Rates (Short vs Long)
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Hourly rates by side for the selected venue pair
+                    </p>
+                  </div>
                 </div>
 
                 {chartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={chartData}>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={chartData} barCategoryGap="25%">
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis
                         dataKey="timestamp"
@@ -935,7 +940,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                       <YAxis
                         stroke="#9CA3AF"
                         tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                        tickFormatter={(value) => `${(value * 10000).toFixed(0)}bp`}
+                        tickFormatter={(value) => `${(value * 100).toFixed(2)}%`}
                       />
                       <Tooltip
                         contentStyle={{
@@ -945,39 +950,39 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         }}
                         labelStyle={{ color: '#F3F4F6' }}
                         formatter={(value: number, name: string) => [
-                          `${(value * 100).toFixed(4)}%`,
+                          `${(value * 100).toFixed(3)}%`,
                           name === 'rate_short' ? `Short (${selectedVenues?.short || ''})` :
                             name === 'rate_long' ? `Long (${selectedVenues?.long || ''})` : name
                         ]}
                       />
-                      <Legend />
                       <Bar
                         dataKey="rate_short"
                         fill="#EF4444"
                         radius={[2, 2, 0, 0]}
-                        name="Short Rate"
+                        name={`Short (${selectedVenues?.short || 'N/A'})`}
+                        maxBarSize={14}
                       />
                       <Bar
                         dataKey="rate_long"
                         fill="#10B981"
                         radius={[2, 2, 0, 0]}
-                        name="Long Rate"
+                        name={`Long (${selectedVenues?.long || 'N/A'})`}
+                        maxBarSize={14}
                       />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex items-center justify-center h-64 text-gray-400">
+                  <div className="flex items-center justify-center h-56 text-gray-400">
                     No rate data available
                   </div>
                 )}
               </div>
             </div>
 
-            {/* OI Analysis Row */}
-            <div className="grid grid-cols-1 gap-6">
-
+            {/* OI + Profit Row */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {/* OI Metrics Card */}
-              <div className="bg-gray-800 rounded-xl p-6">
+              <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/60 h-full">
                 <div className="flex items-center gap-2 mb-4">
                   <h3 className="text-lg font-semibold text-white">Open Interest Analysis</h3>
                   <div className="relative group">
@@ -995,7 +1000,6 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
                 {hasOiData ? (
                   <div className="space-y-4">
-                    {/* OI Summary */}
                     <div className="bg-gray-900 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-gray-400">Min OI (Bottleneck)</span>
@@ -1012,8 +1016,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         </div>
                       </div>
 
-                      {/* OI by Side */}
-                      <div className="grid grid-cols-2 gap-3 mt-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                         <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3">
                           <div className="flex items-center gap-2 mb-2">
                             <TrendingDown className="w-4 h-4 text-red-400" />
@@ -1040,7 +1043,6 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         </div>
                       </div>
 
-                      {/* Visual Compare */}
                       {(oiShort || 0) > 0 || (oiLong || 0) > 0 ? (
                         <div className="mt-4 pt-3 border-t border-gray-700">
                           <div className="text-xs text-gray-400 mb-2">OI Comparison</div>
@@ -1079,7 +1081,6 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         </div>
                       ) : null}
 
-                      {/* Imbalance Indicator */}
                       {oiShort && oiLong && oiShort > 0 && oiLong > 0 && (
                         <div className="mt-4 pt-3 border-t border-gray-700">
                           <div className="flex items-center justify-between">
@@ -1109,14 +1110,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                               );
                             })()}
                           </div>
-                          <p className="text-xs text-gray-500 mt-2">
-                            Side with less OI may yield more points on DEXs.
-                          </p>
                         </div>
                       )}
                     </div>
 
-                    {/* Current Spread */}
                     {opportunity?.spread_bps !== undefined && (
                       <div className="bg-gray-900 rounded-lg p-4">
                         <div className="flex items-center justify-between">
@@ -1140,6 +1137,135 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     <p className="text-xs mt-1">OI data missing for this symbol/venue pair</p>
                   </div>
                 )}
+              </div>
+
+              {/* Profit Simulator (moved next to OI) */}
+              <div className="bg-gray-800 rounded-xl p-6 border border-gray-700/60 h-full">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+                  <DollarSign className="w-5 h-5" />
+                  Profit Simulator
+                </h3>
+
+                <div className="space-y-4">
+                  {(liveSnapshot || symbolStats.length > 0) && (
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400">Long on</span>
+                        <span className="px-2 py-1 bg-green-900 text-green-400 rounded text-xs font-medium">
+                          {liveSnapshot?.venue_long || symbolStats[0]?.venue_long || 'N/A'}
+                        </span>
+                      </div>
+                      <span className="text-gray-400">×</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400">Short on</span>
+                        <span className="px-2 py-1 bg-red-900 text-red-400 rounded text-xs font-medium">
+                          {liveSnapshot?.venue_short || symbolStats[0]?.venue_short || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Current Spread APR:</span>
+                      <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
+                        {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours). This is an average, not the current snapshot.">
+                      <span className="text-gray-400">Avg APR (72h):</span>
+                      <span className={`font-bold ${avgApr3d !== null ? getAPRColor(avgApr3d) : 'text-gray-400'}`}>
+                        {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
+                      </span>
+                    </div>
+                    {opportunity?.apr_7d !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Avg APR (7 days):</span>
+                        <span className={`font-bold ${getAPRColor(opportunity.apr_7d)}`}>
+                          {opportunity.apr_7d.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                    {opportunity?.apr_30d !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Avg APR (30 days):</span>
+                        <span className={`font-bold ${getAPRColor(opportunity.apr_30d)}`}>
+                          {opportunity.apr_30d.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Est. Fees (entry+exit):</span>
+                      <span className="text-white">~0.2%</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">
+                        Holding Period: {simulationDays} day{simulationDays > 1 ? 's' : ''}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="365"
+                        value={simulationDays}
+                        onChange={(e) => setSimulationDays(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">
+                        Position Size (USD)
+                      </label>
+                      <input
+                        type="number"
+                        value={simulationAmount}
+                        onChange={(e) => setSimulationAmount(Number(e.target.value))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g. 5000"
+                      />
+                    </div>
+                  </div>
+
+                  {simulation ? (
+                    <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
+                      <div className="flex justify-between text-xs text-gray-500 mb-2">
+                        <span>Using APR: {simulation.netApr?.toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Funding Collected:</span>
+                        <span className="text-green-400">+${simulation.fundingPayment.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Entry Fees:</span>
+                        <span className="text-red-400">-${simulation.entryFees.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Exit Fees:</span>
+                        <span className="text-red-400">-${simulation.exitFees.toFixed(2)}</span>
+                      </div>
+                      <div className="border-t border-gray-700 pt-2 mt-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-white font-semibold">Net Profit:</span>
+                          <div className="text-right">
+                            <div className={`text-lg font-bold ${simulation.netProfit > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              ${simulation.netProfit.toFixed(2)}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              ROI: {simulation.roi.toFixed(3)}%
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-900 rounded-lg p-4 text-center text-gray-400 text-sm">
+                      No profitable opportunity found for this symbol
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1195,134 +1321,6 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
               </div>
             )}
 
-            {/* Final Row: Profit Simulator */}
-            <div className="bg-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-                <DollarSign className="w-5 h-5" />
-                Profit Simulator
-              </h3>
-
-              <div className="space-y-4">
-                {(liveSnapshot || symbolStats.length > 0) && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-400">Long on</span>
-                      <span className="px-2 py-1 bg-green-900 text-green-400 rounded text-xs font-medium">
-                        {liveSnapshot?.venue_long || symbolStats[0]?.venue_long || 'N/A'}
-                      </span>
-                    </div>
-                    <span className="text-gray-400">×</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-400">Short on</span>
-                      <span className="px-2 py-1 bg-red-900 text-red-400 rounded text-xs font-medium">
-                        {liveSnapshot?.venue_short || symbolStats[0]?.venue_short || 'N/A'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Current Spread APR:</span>
-                    <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
-                      {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours). This is an average, not the current snapshot.">
-                    <span className="text-gray-400">Avg APR (72h):</span>
-                    <span className={`font-bold ${avgApr3d !== null ? getAPRColor(avgApr3d) : 'text-gray-400'}`}>
-                      {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
-                    </span>
-                  </div>
-                  {opportunity?.apr_7d !== undefined && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Avg APR (7 days):</span>
-                      <span className={`font-bold ${getAPRColor(opportunity.apr_7d)}`}>
-                        {opportunity.apr_7d.toFixed(1)}%
-                      </span>
-                    </div>
-                  )}
-                  {opportunity?.apr_30d !== undefined && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Avg APR (30 days):</span>
-                      <span className={`font-bold ${getAPRColor(opportunity.apr_30d)}`}>
-                        {opportunity.apr_30d.toFixed(1)}%
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Est. Fees (entry+exit):</span>
-                    <span className="text-white">~0.2%</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">
-                      Holding Period: {simulationDays} day{simulationDays > 1 ? 's' : ''}
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="365"
-                      value={simulationDays}
-                      onChange={(e) => setSimulationDays(Number(e.target.value))}
-                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">
-                      Position Size (USD)
-                    </label>
-                    <input
-                      type="number"
-                      value={simulationAmount}
-                      onChange={(e) => setSimulationAmount(Number(e.target.value))}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g. 5000"
-                    />
-                  </div>
-                </div>
-
-                {simulation ? (
-                  <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
-                    <div className="flex justify-between text-xs text-gray-500 mb-2">
-                      <span>Using APR: {simulation.netApr?.toFixed(1)}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Funding Collected:</span>
-                      <span className="text-green-400">+${simulation.fundingPayment.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Entry Fees:</span>
-                      <span className="text-red-400">-${simulation.entryFees.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Exit Fees:</span>
-                      <span className="text-red-400">-${simulation.exitFees.toFixed(2)}</span>
-                    </div>
-                    <div className="border-t border-gray-700 pt-2 mt-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-white font-semibold">Net Profit:</span>
-                        <div className="text-right">
-                          <div className={`text-lg font-bold ${simulation.netProfit > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            ${simulation.netProfit.toFixed(2)}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            ROI: {simulation.roi.toFixed(3)}%
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-gray-900 rounded-lg p-4 text-center text-gray-400 text-sm">
-                    No profitable opportunity found for this symbol
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
       </div>

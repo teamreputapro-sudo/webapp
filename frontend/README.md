@@ -110,7 +110,11 @@ curl -s https://54strategydigital.com/ | head -20
   - Price Spread History
 - Reordenado del layout:
   - `Price Spread History` sube al bloque principal intermedio.
-  - `Profit Simulator` pasa al bloque final.
+  - `Profit Simulator` se mueve junto a `Open Interest Analysis` (derecha en desktop).
+- Ajustes de legibilidad:
+  - Mejora visual de cards AVG en panel superior.
+  - Mejora visual del grafico `Funding Rates (short vs long)`.
+  - Se elimina la frase auxiliar bajo el bloque de imbalance de OI.
 
 ### Opportunities Scanner
 - Oportunidades de arbitraje en tiempo real

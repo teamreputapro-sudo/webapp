@@ -86,8 +86,12 @@ Implemented:
     - Funding Rates (Short vs Long)
     - Price Spread History
 - Layout reorder:
-  - `Price Spread History` moved up to the row where the simulator was.
-  - `Profit Simulator` moved to the final block of the detail page.
+  - `Price Spread History` moved up to the main intermediate row.
+  - `Profit Simulator` moved next to `Open Interest Analysis` (right column on desktop).
+- Detail readability refinements:
+  - Removed the extra helper sentence below OI imbalance.
+  - Improved AVG card sizing/spacing in the top summary panel.
+  - Improved `Funding Rates (Short vs Long)` chart readability (axis/spacing/height).
 
 Verification notes:
 - `npm run build` in `frontend/` passes.
