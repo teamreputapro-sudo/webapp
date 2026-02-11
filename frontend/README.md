@@ -2,7 +2,7 @@
 
 > **Status:** EN PRODUCCION
 > **URL:** https://54strategydigital.com/
-> **Ultima actualizacion:** 2025-12-15
+> **Ultima actualizacion:** 2026-02-11
 
 ---
 
@@ -100,6 +100,17 @@ curl -s https://54strategydigital.com/ | head -20
 ---
 
 ## Features
+
+### Symbol Detail (Scanner) - 2026-02-11
+- Nuevo panel superior estilo "dusk panel" en detalle de simbolo.
+- Timeframe `3d` agregado al grafico de Funding Spread (se obtiene desde `7d` y se recorta a 72h).
+- Controles `zoom in` / `zoom out` compartidos en:
+  - Funding Spread
+  - Funding Rates (short vs long)
+  - Price Spread History
+- Reordenado del layout:
+  - `Price Spread History` sube al bloque principal intermedio.
+  - `Profit Simulator` pasa al bloque final.
 
 ### Opportunities Scanner
 - Oportunidades de arbitraje en tiempo real
