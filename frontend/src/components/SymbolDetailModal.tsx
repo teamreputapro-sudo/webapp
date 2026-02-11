@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, TrendingUp, TrendingDown, Activity, DollarSign, Download, Info, Flame, BarChart3 as BarChartIcon } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Activity, DollarSign, Download, Info, Flame, Search, Table2, ZoomIn, ZoomOut, BarChart3 as BarChartIcon } from 'lucide-react';
 import { Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, ComposedChart } from 'recharts';
 import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
@@ -103,6 +103,9 @@ const CACHE_TTL_MS = 120 * 1000;
 
 const THREED_AVG_CACHE = new Map<string, { ts: number; avgApr3d: number | null }>();
 const THREED_AVG_TTL_MS = 120 * 1000;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 6;
+const ZOOM_STEP = 1.5;
 
 const getCacheKey = (
   symbol: string,
@@ -122,12 +125,13 @@ const get3dKey = (
 };
 
 export default function SymbolDetailModal({ symbol, opportunity, onClose, mode = 'modal' }: SymbolDetailModalProps) {
-  const [timeframe, setTimeframe] = useState<'24h' | '7d' | '15d' | '31d'>('24h');
+  const [timeframe, setTimeframe] = useState<'24h' | '3d' | '7d' | '15d' | '31d'>('24h');
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [exchangeInfo, setExchangeInfo] = useState<ExchangeInfo[]>([]);
   const [liveSnapshot, setLiveSnapshot] = useState<LiveSnapshot | null>(null);
   const [symbolStats, setSymbolStats] = useState<SymbolStats[]>([]);
   const [avgApr3d, setAvgApr3d] = useState<number | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [simulationAmount, setSimulationAmount] = useState<number>(5000);
   const [simulationDays, setSimulationDays] = useState<number>(1);
   const [loading, setLoading] = useState(true);
@@ -157,6 +161,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     fetchSymbolData();
     const interval = setInterval(fetchLiveData, 30000); // Update every 30s
     return () => clearInterval(interval);
+  }, [symbol, timeframe, selectedVenues]);
+
+  useEffect(() => {
+    setZoomLevel(1);
   }, [symbol, timeframe, selectedVenues]);
 
   // Compute a real 3D average from history (last 72 hours).
@@ -219,8 +227,9 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
     setLoading(true);
     try {
+      const apiTimeframe = timeframe === '3d' ? '7d' : timeframe;
       // Build history URL with optional venue params for fixed spread calculation
-      let historyUrl = buildApiUrl(`/api/symbol-detail/history/${symbol}?timeframe=${timeframe}`);
+      let historyUrl = buildApiUrl(`/api/symbol-detail/history/${symbol}?timeframe=${apiTimeframe}`);
       if (selectedVenues) {
         historyUrl += `&venue_short=${selectedVenues.short}&venue_long=${selectedVenues.long}`;
         if (selectedVenues.dexShort) {
@@ -344,7 +353,8 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
   const handleExportCSV = async () => {
     try {
-      window.open(buildApiUrl(`/api/symbol-detail/export/${symbol}?timeframe=${timeframe}&format=csv`), '_blank');
+      const apiTimeframe = timeframe === '3d' ? '7d' : timeframe;
+      window.open(buildApiUrl(`/api/symbol-detail/export/${symbol}?timeframe=${apiTimeframe}&format=csv`), '_blank');
     } catch (error) {
       console.error('Error exporting CSV:', error);
     }
@@ -368,6 +378,20 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
       d.venue_short === selectedVenues.short && d.venue_long === selectedVenues.long
     )
     : historicalData;
+
+  // 3d is served from 7d data and cropped locally to the last 72h.
+  const timeframeHistoricalData = timeframe === '3d'
+    ? filteredHistoricalData.filter((d) => {
+      const ts = Date.parse(d.timestamp);
+      return Number.isFinite(ts) && ts >= Date.now() - (72 * 60 * 60 * 1000);
+    })
+    : filteredHistoricalData;
+
+  const chartData = (() => {
+    if (!timeframeHistoricalData.length) return [];
+    const visiblePoints = Math.max(16, Math.floor(timeframeHistoricalData.length / zoomLevel));
+    return timeframeHistoricalData.slice(-visiblePoints);
+  })();
 
   const calculateSimulation = () => {
     // Use opportunity data or best stats
@@ -464,6 +488,37 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     return { label: 'High OI', color: 'text-gray-400' };
   };
 
+  const formatTimeTick = (value: string) => {
+    const date = new Date(value);
+    if (timeframe === '24h') return date.toLocaleTimeString('en-US', { hour: 'numeric' });
+    if (timeframe === '3d') return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const handleZoomIn = () => {
+    setZoomLevel((z) => Math.min(MAX_ZOOM, Number((z * ZOOM_STEP).toFixed(2))));
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel((z) => Math.max(MIN_ZOOM, Number((z / ZOOM_STEP).toFixed(2))));
+  };
+
+  const avgApr24h = (() => {
+    const cutoff = Date.now() - (24 * 60 * 60 * 1000);
+    const values = filteredHistoricalData
+      .filter((d) => {
+        const ts = Date.parse(d.timestamp);
+        return Number.isFinite(ts) && ts >= cutoff;
+      })
+      .map((d) => d.spread_apr)
+      .filter((v) => Number.isFinite(v));
+    if (!values.length) return null;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  })();
+
+  const currentNetApr = liveSnapshot?.funding_delta_apr ?? opportunity?.net_apr ?? avgApr3d ?? 0;
+  const currentSpreadBps = liveSnapshot?.price_spread_bps ?? opportunity?.spread_bps ?? 0;
+
   const wrapperClass = mode === 'modal'
     ? 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
     : 'min-h-screen bg-gray-900 flex items-start justify-center py-8 px-4';
@@ -476,17 +531,91 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     <div className={wrapperClass}>
       <div className={panelClass}>
         {/* Header */}
-        <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 flex items-center justify-between z-10">
-          <div>
-            <h2 className="text-2xl font-bold text-white">{symbol}</h2>
-            <p className="text-gray-400 text-sm mt-1">Funding Rate Analysis</p>
+        <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+            <div className="lg:w-44 shrink-0">
+              <h2 className="text-2xl font-bold text-white">{symbol}</h2>
+              <p className="text-gray-400 text-sm mt-1">Funding Rate Analysis</p>
+            </div>
+
+            <div className="flex-1 min-w-0 rounded-xl border border-cyan-900/30 bg-[#070b1c] px-4 py-3">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                <div className="md:col-span-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-2">
+                    <div className="text-[10px] uppercase text-red-300 tracking-wide">Short · {selectedVenues?.short || shortEx?.name || '—'}</div>
+                    <div className={`font-mono text-xl font-bold ${getAPRColor(shortEx?.apr || 0)}`}>
+                      {shortEx ? formatAPR(shortEx.apr) : '—'}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 px-3 py-2">
+                    <div className="text-[10px] uppercase text-emerald-300 tracking-wide">Long · {selectedVenues?.long || longEx?.name || '—'}</div>
+                    <div className={`font-mono text-xl font-bold ${getAPRColor(longEx?.apr || 0)}`}>
+                      {longEx ? formatAPR(longEx.apr) : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="md:col-span-3 rounded-lg border border-cyan-800/50 bg-cyan-900/10 px-4 py-2 text-center">
+                  <div className="text-xs uppercase tracking-wide text-gray-400">Net APR (Current)</div>
+                  <div className={`font-mono text-4xl font-bold ${getAPRColor(currentNetApr)}`}>
+                    {formatAPR(currentNetApr)}
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-1">
+                    as-of {liveSnapshot ? new Date(liveSnapshot.last_update).toLocaleTimeString() : 'N/A'}
+                  </div>
+                </div>
+
+                <div className="md:col-span-3 grid grid-cols-1 gap-2">
+                  <div className="rounded-lg border border-blue-800/60 bg-blue-900/10 px-3 py-2">
+                    <div className="text-[10px] uppercase text-gray-400 tracking-wide">Price Spread</div>
+                    <div className="font-mono text-xl text-emerald-400 font-semibold">
+                      {currentSpreadBps >= 0 ? '+' : ''}{currentSpreadBps.toFixed(1)} bps
+                      <span className="text-sm text-emerald-300 ml-2">
+                        ({currentSpreadBps >= 0 ? '+' : ''}{(currentSpreadBps / 100).toFixed(2)}%)
+                      </span>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2">
+                    <div className="text-[10px] uppercase text-gray-400 tracking-wide">Open Interest</div>
+                    <div className="text-sm text-gray-200">
+                      <span className="text-red-300 mr-2">{(selectedVenues?.short || shortEx?.name || 'S').toUpperCase().slice(0, 4)} {formatOI(oiShort || undefined)}</span>
+                      <span className="text-emerald-300">{(selectedVenues?.long || longEx?.name || 'L').toUpperCase().slice(0, 4)} {formatOI(oiLong || undefined)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="md:col-span-3 flex items-center justify-between gap-2">
+                  <div className="grid grid-cols-4 gap-2 flex-1">
+                    {[
+                      { label: '24h Avg', value: avgApr24h },
+                      { label: '3d Avg', value: avgApr3d },
+                      { label: '7d Avg', value: opportunity?.apr_7d },
+                      { label: '30d Avg', value: opportunity?.apr_30d },
+                    ].map((metric) => (
+                      <div key={metric.label} className="rounded-md border border-gray-700 bg-gray-900/40 px-2 py-2 text-center">
+                        <div className="text-[10px] text-gray-400 uppercase">{metric.label}</div>
+                        <div className={`text-lg font-mono font-semibold ${metric.value !== undefined && metric.value !== null ? getAPRColor(metric.value) : 'text-gray-500'}`}>
+                          {metric.value !== undefined && metric.value !== null ? `${metric.value.toFixed(1)}%` : '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button className="p-2 rounded-md bg-cyan-900/30 border border-cyan-700/50 text-cyan-300"><Search className="w-4 h-4" /></button>
+                    <button className="p-2 rounded-md bg-emerald-900/30 border border-emerald-700/50 text-emerald-300"><Table2 className="w-4 h-4" /></button>
+                    <button className="p-2 rounded-md bg-amber-900/30 border border-amber-700/50 text-amber-300"><BarChartIcon className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="self-start lg:self-center p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              <X className="w-6 h-6 text-gray-400" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <X className="w-6 h-6 text-gray-400" />
-          </button>
         </div>
 
         {loading ? (
@@ -504,7 +633,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     <Activity className="w-5 h-5" />
                     {symbol} FUNDING SPREAD (APR %)
                   </h3>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     {/* Venue selector */}
                     {venueCombinations.length > 1 && (
                       <select
@@ -523,7 +652,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                       </select>
                     )}
                     <div className="flex gap-2">
-                      {(['24h', '7d', '15d', '31d'] as const).map((tf) => (
+                      {(['24h', '3d', '7d', '15d', '31d'] as const).map((tf) => (
                         <button
                           key={tf}
                           onClick={() => setTimeframe(tf)}
@@ -536,6 +665,25 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         </button>
                       ))}
                     </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={handleZoomOut}
+                        disabled={zoomLevel <= MIN_ZOOM}
+                        className="p-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-gray-300"
+                        title="Zoom out"
+                      >
+                        <ZoomOut className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={handleZoomIn}
+                        disabled={zoomLevel >= MAX_ZOOM}
+                        className="p-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-gray-300"
+                        title="Zoom in"
+                      >
+                        <ZoomIn className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs text-gray-400 ml-1">{zoomLevel.toFixed(1)}x</span>
+                    </div>
                     <button
                       onClick={handleExportCSV}
                       className="p-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
@@ -546,9 +694,9 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                   </div>
                 </div>
 
-                {filteredHistoricalData.length > 0 ? (
+                {chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={filteredHistoricalData.map(d => ({
+                    <ComposedChart data={chartData.map(d => ({
                       ...d,
                       spread_positive: d.spread_apr >= 0 ? d.spread_apr : 0,
                       spread_negative: d.spread_apr < 0 ? d.spread_apr : 0,
@@ -558,12 +706,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                         dataKey="timestamp"
                         stroke="#9CA3AF"
                         tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                        tickFormatter={(value) => {
-                          const date = new Date(value);
-                          return timeframe === '24h'
-                            ? date.toLocaleTimeString('en-US', { hour: 'numeric' })
-                            : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                        }}
+                        tickFormatter={formatTimeTick}
                       />
                       <YAxis
                         stroke="#9CA3AF"
@@ -710,145 +853,64 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
               </div>
             </div>
 
-            {/* Bottom Row: Arbitrage Summary + Funding Delta Chart */}
+            {/* Bottom Row: Price Spread + Funding Rates */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Arbitrage Summary with Simulator */}
+              {/* Price Spread Historical Chart */}
               <div className="bg-gray-800 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-                  <DollarSign className="w-5 h-5" />
-                  Profit Simulator
-                </h3>
-
-                <div className="space-y-4">
-                  {/* Show venue info from stats or snapshot */}
-                  {(liveSnapshot || symbolStats.length > 0) && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-400">Long on</span>
-                        <span className="px-2 py-1 bg-green-900 text-green-400 rounded text-xs font-medium">
-                          {liveSnapshot?.venue_long || symbolStats[0]?.venue_long || 'N/A'}
-                        </span>
-                      </div>
-                      <span className="text-gray-400">×</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-400">Short on</span>
-                        <span className="px-2 py-1 bg-red-900 text-red-400 rounded text-xs font-medium">
-                          {liveSnapshot?.venue_short || symbolStats[0]?.venue_short || 'N/A'}
-                        </span>
-                      </div>
+                <div className="flex items-center gap-2 mb-4">
+                  <h3 className="text-lg font-semibold text-white">Price Spread History</h3>
+                  <div className="relative group">
+                    <Info className="w-4 h-4 text-gray-400 cursor-help" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-gray-700 text-xs text-gray-200 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                      <p className="font-semibold mb-1">Price Spread</p>
+                      <p>Price difference between venues:</p>
+                      <p className="mt-2 text-green-400">&lt;10 bps = Excellent</p>
+                      <p className="text-yellow-400">10-30 bps = Acceptable</p>
+                      <p className="text-red-400">&gt;30 bps = High risk</p>
                     </div>
-                  )}
-
-                  {/* Current APR info */}
-              <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Current Spread APR:</span>
-                    <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
-                      {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
-                    </span>
-                  </div>
-                <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours). This is an average, not the current snapshot.">
-                  <span className="text-gray-400">Avg APR (72h):</span>
-                  <span className={`font-bold ${avgApr3d !== null ? getAPRColor(avgApr3d) : 'text-gray-400'}`}>
-                    {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
-                  </span>
-                </div>
-                {opportunity?.apr_7d !== undefined && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Avg APR (7 days):</span>
-                    <span className={`font-bold ${getAPRColor(opportunity.apr_7d)}`}>
-                      {opportunity.apr_7d.toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                    {opportunity?.apr_30d !== undefined && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Avg APR (30 days):</span>
-                        <span className={`font-bold ${getAPRColor(opportunity.apr_30d)}`}>
-                          {opportunity.apr_30d.toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Est. Fees (entry+exit):</span>
-                      <span className="text-white">~0.2%</span>
-                    </div>
-                  </div>
-
-                  {/* Simulator */}
-                  <div className="mt-4">
-                    <div className="mb-4">
-                      <label className="block text-sm text-gray-400 mb-2">
-                        Holding Period: {simulationDays} day{simulationDays > 1 ? 's' : ''}
-                      </label>
-                      <input
-                        type="range"
-                        min="1"
-                        max="365"
-                        value={simulationDays}
-                        onChange={(e) => setSimulationDays(Number(e.target.value))}
-                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="mb-4">
-                      <label className="block text-sm text-gray-400 mb-2">
-                        Position Size (USD)
-                      </label>
-                      <input
-                        type="number"
-                        value={simulationAmount}
-                        onChange={(e) => setSimulationAmount(Number(e.target.value))}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. 5000"
-                      />
-                    </div>
-
-                    {simulation ? (
-                      <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
-                        <div className="flex justify-between text-xs text-gray-500 mb-2">
-                          <span>Using APR: {simulation.netApr?.toFixed(1)}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Funding Collected:</span>
-                          <span className="text-green-400">
-                            +${simulation.fundingPayment.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Entry Fees:</span>
-                          <span className="text-red-400">
-                            -${simulation.entryFees.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Exit Fees:</span>
-                          <span className="text-red-400">
-                            -${simulation.exitFees.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="border-t border-gray-700 pt-2 mt-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-white font-semibold">Net Profit:</span>
-                            <div className="text-right">
-                              <div className={`text-lg font-bold ${simulation.netProfit > 0 ? 'text-green-400' : 'text-red-400'
-                                }`}>
-                                ${simulation.netProfit.toFixed(2)}
-                              </div>
-                              <div className="text-xs text-gray-400">
-                                ROI: {simulation.roi.toFixed(3)}%
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-gray-900 rounded-lg p-4 text-center text-gray-400 text-sm">
-                        No profitable opportunity found for this symbol
-                      </div>
-                    )}
                   </div>
                 </div>
+
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis
+                        dataKey="timestamp"
+                        stroke="#9CA3AF"
+                        tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                        tickFormatter={formatTimeTick}
+                      />
+                      <YAxis
+                        stroke="#9CA3AF"
+                        tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                        tickFormatter={(value) => `${value.toFixed(0)} bps`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#1F2937',
+                          border: '1px solid #374151',
+                          borderRadius: '0.5rem',
+                        }}
+                        formatter={(value: number) => [`${value.toFixed(1)} bps`, 'Spread']}
+                      />
+                      <ReferenceLine y={10} stroke="#10B981" strokeDasharray="3 3" label={{ value: '10 bps', fill: '#10B981', fontSize: 10 }} />
+                      <ReferenceLine y={30} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '30 bps', fill: '#F59E0B', fontSize: 10 }} />
+                      <Area
+                        type="monotone"
+                        dataKey="spread_bps"
+                        fill="#3B82F6"
+                        fillOpacity={0.3}
+                        stroke="#3B82F6"
+                        strokeWidth={2}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-48 text-gray-400">
+                    No spread data available
+                  </div>
+                )}
               </div>
 
               {/* Funding Rates by Venue Chart */}
@@ -859,18 +921,15 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                   </h3>
                 </div>
 
-                {filteredHistoricalData.length > 0 ? (
+                {chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={filteredHistoricalData.slice(-30)}>
+                    <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis
                         dataKey="timestamp"
                         stroke="#9CA3AF"
                         tick={{ fill: '#9CA3AF', fontSize: 10 }}
-                        tickFormatter={(value) => {
-                          const date = new Date(value);
-                          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                        }}
+                        tickFormatter={formatTimeTick}
                         interval="preserveStartEnd"
                       />
                       <YAxis
@@ -914,70 +973,8 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
               </div>
             </div>
 
-            {/* Price Spread & OI Analysis Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Price Spread Historical Chart */}
-              <div className="bg-gray-800 rounded-xl p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <h3 className="text-lg font-semibold text-white">Price Spread History</h3>
-                  <div className="relative group">
-                    <Info className="w-4 h-4 text-gray-400 cursor-help" />
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-gray-700 text-xs text-gray-200 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                      <p className="font-semibold mb-1">Price Spread</p>
-                      <p>Price difference between venues:</p>
-                      <p className="mt-2 text-green-400">&lt;10 bps = Excellent</p>
-                      <p className="text-yellow-400">10-30 bps = Acceptable</p>
-                      <p className="text-red-400">&gt;30 bps = High risk</p>
-                    </div>
-                  </div>
-                </div>
-
-                {filteredHistoricalData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <ComposedChart data={filteredHistoricalData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis
-                        dataKey="timestamp"
-                        stroke="#9CA3AF"
-                        tick={{ fill: '#9CA3AF', fontSize: 10 }}
-                        tickFormatter={(value) => {
-                          const date = new Date(value);
-                          return timeframe === '24h'
-                            ? date.toLocaleTimeString('en-US', { hour: 'numeric' })
-                            : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                        }}
-                      />
-                      <YAxis
-                        stroke="#9CA3AF"
-                        tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                        tickFormatter={(value) => `${value.toFixed(0)} bps`}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#1F2937',
-                          border: '1px solid #374151',
-                          borderRadius: '0.5rem',
-                        }}
-                        formatter={(value: number) => [`${value.toFixed(1)} bps`, 'Spread']}
-                      />
-                      <ReferenceLine y={10} stroke="#10B981" strokeDasharray="3 3" label={{ value: '10 bps', fill: '#10B981', fontSize: 10 }} />
-                      <ReferenceLine y={30} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '30 bps', fill: '#F59E0B', fontSize: 10 }} />
-                      <Area
-                        type="monotone"
-                        dataKey="spread_bps"
-                        fill="#3B82F6"
-                        fillOpacity={0.3}
-                        stroke="#3B82F6"
-                        strokeWidth={2}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-48 text-gray-400">
-                    No spread data available
-                  </div>
-                )}
-              </div>
+            {/* OI Analysis Row */}
+            <div className="grid grid-cols-1 gap-6">
 
               {/* OI Metrics Card */}
               <div className="bg-gray-800 rounded-xl p-6">
@@ -1197,6 +1194,135 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                 </div>
               </div>
             )}
+
+            {/* Final Row: Profit Simulator */}
+            <div className="bg-gray-800 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+                <DollarSign className="w-5 h-5" />
+                Profit Simulator
+              </h3>
+
+              <div className="space-y-4">
+                {(liveSnapshot || symbolStats.length > 0) && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Long on</span>
+                      <span className="px-2 py-1 bg-green-900 text-green-400 rounded text-xs font-medium">
+                        {liveSnapshot?.venue_long || symbolStats[0]?.venue_long || 'N/A'}
+                      </span>
+                    </div>
+                    <span className="text-gray-400">×</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Short on</span>
+                      <span className="px-2 py-1 bg-red-900 text-red-400 rounded text-xs font-medium">
+                        {liveSnapshot?.venue_short || symbolStats[0]?.venue_short || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Current Spread APR:</span>
+                    <span className={`font-bold ${getAPRColor(liveSnapshot?.funding_delta_apr || 0)}`}>
+                      {liveSnapshot ? formatAPR(liveSnapshot.funding_delta_apr) : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between" title="Computed from /api/symbol-detail/history (last 72 hours). This is an average, not the current snapshot.">
+                    <span className="text-gray-400">Avg APR (72h):</span>
+                    <span className={`font-bold ${avgApr3d !== null ? getAPRColor(avgApr3d) : 'text-gray-400'}`}>
+                      {avgApr3d !== null ? `${avgApr3d.toFixed(1)}%` : '—'}
+                    </span>
+                  </div>
+                  {opportunity?.apr_7d !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Avg APR (7 days):</span>
+                      <span className={`font-bold ${getAPRColor(opportunity.apr_7d)}`}>
+                        {opportunity.apr_7d.toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  {opportunity?.apr_30d !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Avg APR (30 days):</span>
+                      <span className={`font-bold ${getAPRColor(opportunity.apr_30d)}`}>
+                        {opportunity.apr_30d.toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Est. Fees (entry+exit):</span>
+                    <span className="text-white">~0.2%</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">
+                      Holding Period: {simulationDays} day{simulationDays > 1 ? 's' : ''}
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="365"
+                      value={simulationDays}
+                      onChange={(e) => setSimulationDays(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">
+                      Position Size (USD)
+                    </label>
+                    <input
+                      type="number"
+                      value={simulationAmount}
+                      onChange={(e) => setSimulationAmount(Number(e.target.value))}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. 5000"
+                    />
+                  </div>
+                </div>
+
+                {simulation ? (
+                  <div className="bg-gray-900 rounded-lg p-4 space-y-2 text-sm">
+                    <div className="flex justify-between text-xs text-gray-500 mb-2">
+                      <span>Using APR: {simulation.netApr?.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Funding Collected:</span>
+                      <span className="text-green-400">+${simulation.fundingPayment.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Entry Fees:</span>
+                      <span className="text-red-400">-${simulation.entryFees.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Exit Fees:</span>
+                      <span className="text-red-400">-${simulation.exitFees.toFixed(2)}</span>
+                    </div>
+                    <div className="border-t border-gray-700 pt-2 mt-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-white font-semibold">Net Profit:</span>
+                        <div className="text-right">
+                          <div className={`text-lg font-bold ${simulation.netProfit > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            ${simulation.netProfit.toFixed(2)}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            ROI: {simulation.roi.toFixed(3)}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-900 rounded-lg p-4 text-center text-gray-400 text-sm">
+                    No profitable opportunity found for this symbol
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

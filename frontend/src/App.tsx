@@ -758,8 +758,12 @@ export default function App() {
 
   const currentNav = navigation.find(n => n.path === location.pathname) || navigation[0];
   const isMainPage = getMainPaths().includes(location.pathname);
-  const isLandingPage = location.pathname === landingPath;
-  const showAdBanners = backendStatus === 'online' && !isLandingPage;
+  // Treat legacy direct paths as "Landing/Home" too, so AdSense banners don't leave gaps there.
+  // This also covers users hitting `/home` directly in root mode (fallback route).
+  const isLandingPage =
+    location.pathname === landingPath ||
+    location.pathname === '/home' ||
+    location.pathname === '/index.html';
 
   return (
     <div className="min-h-screen transition-colors flex flex-col">
@@ -897,14 +901,14 @@ export default function App() {
         )}
       </header>
 
-      {/* Top Ad Banner (not on Landing/Home). */}
-      {showAdBanners && (
+      {/* Top Ad Banner: reserve space to prevent CLS (backendStatus flips after health check). */}
+      {!isLandingPage && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 w-full">
           <AdBanner
             slot="2893729326"
             format="auto"
             className="mb-2"
-            enabled
+            enabled={backendStatus === 'online'}
             reserve="auto"
           />
         </div>
@@ -991,14 +995,14 @@ export default function App() {
         </Suspense>
       </main>
 
-      {/* Bottom Ad Banner (not on Landing/Home). */}
-      {showAdBanners && (
+      {/* Bottom Ad Banner: reserve space to prevent CLS. */}
+      {!isLandingPage && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 w-full">
           <AdBanner
             slot="3776222694"
             format="auto"
             className="mt-4"
-            enabled
+            enabled={backendStatus === 'online'}
             reserve="auto"
           />
         </div>
