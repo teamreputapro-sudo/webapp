@@ -128,7 +128,9 @@ curl -s https://54strategydigital.com/ | head -20
   - Fallback: estimación desde `24h/7d` solo si `apr_3d` no existe.
 - En backend, oportunidades HIP-3 usan `spread_bps` ejecutable con la misma fórmula de detalle:
   - `ask(long) - bid(short)` normalizado por `ask(long)`.
-- En detalle, la cabecera prioriza `7d/30d` derivados del historial del propio par seleccionado para evitar discrepancias por estado stale del scanner.
+- Paridad scanner -> detalle (click-through):
+  - En detalle, la cabecera ahora prioriza los valores del `opportunity` clicado (`spread_bps`, `net_apr`, `apr_24h`, `apr_3d`, `apr_7d`, `apr_30d`) para que coincidan con la fila del scanner.
+  - Si no hay `opportunity` en estado de ruta (ej. apertura directa de URL), se usa fallback al snapshot/historial derivado como antes.
 
 ### Home Stability Hotfix - 2026-02-12
 - Fix crítico en `LandingPage` (home en blanco):

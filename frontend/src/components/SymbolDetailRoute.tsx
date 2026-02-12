@@ -8,6 +8,8 @@ type OpportunityLike = {
   symbol: string;
   net_apr?: number;
   gross_apr?: number;
+  apr_24h?: number;
+  apr_3d?: number;
   exchange_short?: string;
   exchange_long?: string;
   short_exchange?: string;

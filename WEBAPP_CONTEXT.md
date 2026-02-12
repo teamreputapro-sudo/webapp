@@ -107,7 +107,9 @@ Consistency update (2026-02-12):
   - Fallback to an estimated value from `24h/7d` only when missing.
 - HIP-3 opportunities `spread_bps` now follows the same executable formula as detail:
   - `ask(long) - bid(short)` normalized by `ask(long)`.
-- Detail header `7d/30d` averages prioritize values derived from detail history for the selected pair.
+- Scanner -> detail parity on header metrics:
+  - Detail header now prioritizes the clicked scanner row values (`spread_bps`, `net_apr`, `apr_24h`, `apr_3d`, `apr_7d`, `apr_30d`).
+  - If route state is missing (direct URL open), it falls back to snapshot/history-derived values.
 
 Landing stability hotfix (2026-02-12):
 - Root home blank screen was caused by venue layout mismatch in `LandingPage`.

@@ -9,6 +9,8 @@ interface OpportunityLike {
   symbol: string;
   net_apr?: number;
   gross_apr?: number;
+  apr_24h?: number;
+  apr_3d?: number;
   exchange_short?: string;
   exchange_long?: string;
   short_exchange?: string;
@@ -624,12 +626,18 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     return values.reduce((a, b) => a + b, 0) / values.length;
   })();
 
-  const currentNetApr = liveSnapshot?.funding_delta_apr ?? opportunity?.net_apr ?? avgApr3d ?? 0;
-  const currentSpreadBps = liveSnapshot?.price_spread_bps ?? opportunity?.spread_bps ?? 0;
-  // Prefer values derived from the detail's own pair-filtered history
-  // so header averages stay consistent with the charts in this view.
-  const headerAvg7d = avgApr7dDerived ?? opportunity?.apr_7d;
-  const headerAvg30d = avgApr30dDerived ?? opportunity?.apr_30d;
+  const finiteOrNull = (value: unknown): number | null => {
+    if (typeof value !== 'number') return null;
+    return Number.isFinite(value) ? value : null;
+  };
+
+  const currentNetApr = finiteOrNull(opportunity?.net_apr) ?? finiteOrNull(liveSnapshot?.funding_delta_apr) ?? avgApr3d ?? 0;
+  // Keep header spread aligned with the clicked scanner row when available.
+  const currentSpreadBps = finiteOrNull(opportunity?.spread_bps) ?? finiteOrNull(liveSnapshot?.price_spread_bps) ?? 0;
+  const headerAvg24h = finiteOrNull(opportunity?.apr_24h) ?? avgApr24h;
+  const headerAvg3d = finiteOrNull(opportunity?.apr_3d) ?? avgApr3d;
+  const headerAvg7d = finiteOrNull(opportunity?.apr_7d) ?? avgApr7dDerived;
+  const headerAvg30d = finiteOrNull(opportunity?.apr_30d) ?? avgApr30dDerived;
 
   const wrapperClass = mode === 'modal'
     ? 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
@@ -674,8 +682,8 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
                 <div className="md:col-span-4 grid grid-cols-2 gap-2">
                   {[
-                    { label: '24h Avg', value: avgApr24h },
-                    { label: '3d Avg', value: avgApr3d },
+                    { label: '24h Avg', value: headerAvg24h },
+                    { label: '3d Avg', value: headerAvg3d },
                     { label: '7d Avg', value: headerAvg7d },
                     { label: '30d Avg', value: headerAvg30d },
                   ].map((metric) => (
