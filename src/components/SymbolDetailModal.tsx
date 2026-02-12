@@ -477,6 +477,30 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     return [...chartData, { timestamp: liveTs, spread_bps: liveBps }];
   })();
 
+  const priceSpreadDisplayData = (() => {
+    if (priceSpreadChartData.length < 8) return priceSpreadChartData;
+    const absValues = priceSpreadChartData
+      .map((d) => Math.abs(d.spread_bps))
+      .filter((v) => Number.isFinite(v))
+      .sort((a, b) => a - b);
+    if (!absValues.length) return priceSpreadChartData;
+
+    const percentile = (arr: number[], q: number) => {
+      const idx = Math.min(arr.length - 1, Math.max(0, Math.floor(q * (arr.length - 1))));
+      return arr[idx];
+    };
+
+    const p95 = percentile(absValues, 0.95);
+    const cap = Math.max(50, p95 * 1.5);
+
+    return priceSpreadChartData.map((d, i) => {
+      if (!Number.isFinite(d.spread_bps)) return d;
+      if (i === priceSpreadChartData.length - 1) return d;
+      const clipped = Math.max(-cap, Math.min(cap, d.spread_bps));
+      return clipped === d.spread_bps ? d : { ...d, spread_bps: clipped };
+    });
+  })();
+
   const calculateSimulation = () => {
     // Use opportunity data or best stats
     // NOTA: opportunity.net_apr viene como porcentaje (ej: 72.68 = 72.68% APR anual)
@@ -918,7 +942,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     <Info className="w-4 h-4 text-gray-400 cursor-help" />
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-gray-700 text-xs text-gray-200 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                       <p className="font-semibold mb-1">Price Spread</p>
-                      <p>Price difference between venues:</p>
+                      <p>Executable taker spread: ask(long) - bid(short)</p>
                       <p className="mt-2 text-green-400">&lt;10 bps = Excellent</p>
                       <p className="text-yellow-400">10-30 bps = Acceptable</p>
                       <p className="text-red-400">&gt;30 bps = High risk</p>
@@ -926,9 +950,9 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                   </div>
                 </div>
 
-                {priceSpreadChartData.length > 0 ? (
+                {priceSpreadDisplayData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
-                    <ComposedChart data={priceSpreadChartData}>
+                    <ComposedChart data={priceSpreadDisplayData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis
                         dataKey="timestamp"

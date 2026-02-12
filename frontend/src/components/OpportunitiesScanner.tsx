@@ -443,7 +443,7 @@ export default function OpportunitiesScanner() {
     return `$${oi.toFixed(0)}`;
   };
 
-  // Price Spread color: green for positive (long > short), red for negative (long < short)
+  // Price Spread color: green for positive spread, red for negative spread.
   const getSpreadColor = (spreadBps: number) => {
     if (spreadBps >= 0) return 'text-emerald-500 dark:text-emerald-400';
     return 'text-red-500 dark:text-red-400';
@@ -927,9 +927,9 @@ export default function OpportunitiesScanner() {
                       {/* Tooltip */}
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 p-2 bg-gray-900 dark:bg-gray-800 text-xs text-gray-200 rounded-lg shadow-xl opacity-0 invisible group-hover/spread:opacity-100 group-hover/spread:visible transition-all z-50 pointer-events-none">
                         <p className="font-semibold mb-1">Price Spread</p>
-                        <p className="text-gray-300 mb-2">Long venue price − Short venue price</p>
-                        <p className="text-emerald-400">Positive: Long price &gt; Short price</p>
-                        <p className="text-red-400">Negative: Long price &lt; Short price</p>
+                        <p className="text-gray-300 mb-2">Executable taker spread: ask(long) − bid(short)</p>
+                        <p className="text-emerald-400">Positive: ask(long) above bid(short)</p>
+                        <p className="text-red-400">Negative: ask(long) below bid(short)</p>
                         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-gray-800"></div>
                       </div>
                     </div>
