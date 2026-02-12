@@ -461,6 +461,22 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     return timeframeHistoricalData.slice(-visiblePoints);
   })();
 
+  // Keep price spread chart aligned with the "current" snapshot value shown in header cards.
+  const priceSpreadChartData = (() => {
+    if (!chartData.length) return chartData;
+    const liveBps = liveSnapshot?.price_spread_bps;
+    if (liveBps === undefined || liveBps === null || !Number.isFinite(liveBps)) return chartData;
+    const liveTs = liveSnapshot?.last_update;
+    if (!liveTs) return chartData;
+
+    const last = chartData[chartData.length - 1];
+    if (last?.timestamp === liveTs) {
+      return chartData.map((d, i) => (i === chartData.length - 1 ? { ...d, spread_bps: liveBps } : d));
+    }
+
+    return [...chartData, { timestamp: liveTs, spread_bps: liveBps }];
+  })();
+
   const calculateSimulation = () => {
     // Use opportunity data or best stats
     // NOTA: opportunity.net_apr viene como porcentaje (ej: 72.68 = 72.68% APR anual)
@@ -910,9 +926,9 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                   </div>
                 </div>
 
-                {chartData.length > 0 ? (
+                {priceSpreadChartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={200}>
-                    <ComposedChart data={chartData}>
+                    <ComposedChart data={priceSpreadChartData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis
                         dataKey="timestamp"
