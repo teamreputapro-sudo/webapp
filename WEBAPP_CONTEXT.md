@@ -120,6 +120,17 @@ Verification notes:
 - `npm run build` in `frontend/` passes.
 - `npm run build:root` in repo root passes.
 
+Source sync note (2026-02-12):
+- This repo has two parallel trees: `src/` and `frontend/src/`.
+- Production builds are generated from `src/` (`npm run build:scanner` / `npm run build:root`).
+- If only `frontend/src/` is updated, scanner detail routes may disappear in production (e.g. `/scanner/s/:symbol` falling back to home).
+- Keep both trees synchronized for shared components:
+  - `App.tsx`
+  - `components/OpportunitiesScanner.tsx`
+  - `components/SymbolDetailModal.tsx`
+  - `components/SymbolDetailRoute.tsx`
+  - `services/symbol-detail-api.ts`
+
 ---
 
 ## Where to read more

@@ -15,7 +15,7 @@ import axios from 'axios';
 import { buildApiUrl } from '../lib/apiBase';
 
 // Available venues (lowercase to match API response)
-const ALL_VENUES = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational'];
+const ALL_VENUES = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational', 'ethereal'];
 
 // Display names for venues
 const VENUE_DISPLAY_NAMES: Record<string, string> = {
@@ -23,7 +23,8 @@ const VENUE_DISPLAY_NAMES: Record<string, string> = {
   'lighter': 'Lighter',
   'pacifica': 'Pacifica',
   'extended': 'Extended',
-  'variational': 'Variational'
+  'variational': 'Variational',
+  'ethereal': 'Ethereal'
 };
 
 // Short abbreviations for venues (used in OI display)
@@ -32,7 +33,8 @@ const VENUE_ABBREV: Record<string, string> = {
   'lighter': 'LIT',
   'pacifica': 'PAC',
   'extended': 'EX',
-  'variational': 'VAR'
+  'variational': 'VAR',
+  'ethereal': 'ETHR'
 };
 
 // Venue accent colors (brand kit)
@@ -41,7 +43,8 @@ const VENUE_COLORS: Record<string, string> = {
   'extended': 'from-emerald-600 to-green-700',        // Dark green
   'pacifica': 'from-sky-400 to-cyan-400',             // Light blue
   'lighter': 'from-slate-400 to-gray-500',            // White/Black (gray)
-  'variational': 'from-purple-500 to-violet-600'      // Grape purple
+  'variational': 'from-purple-500 to-violet-600',     // Grape purple
+  'ethereal': 'from-amber-400 to-orange-500'          // Placeholder (update with brand kit)
 };
 
 // HIP-3 DEX colors (user-deployed perpetuals on Hyperliquid)
@@ -55,9 +58,9 @@ const HIP3_DEX_COLORS: Record<string, string> = {
 
 // Banned symbols (not available for trading)
 
-// Minimum samples for ~5 days of data (5 days * 24 hours * 12 samples/hour = 1440)
-// Symbols with fewer samples are considered "recently listed"
-const MIN_SAMPLES_7D = 1500;
+// Minimum samples for 7d with hourly aggregates (7 * 24 = 168).
+// Keep a buffer for missing buckets so we don't mark active symbols as "recently listed".
+const MIN_SAMPLES_7D = 120;
 
 interface Opportunity {
   opportunity_id: string;
@@ -76,9 +79,11 @@ interface Opportunity {
   max_apr?: number;
   min_apr?: number;
   apr_24h?: number;
+  apr_3d?: number;
   apr_7d?: number;
   apr_30d?: number;
   samples_24h?: number;
+  samples_3d?: number;
   samples_7d?: number;
   samples_30d?: number;
   samples: number;
@@ -100,17 +105,23 @@ interface TopPerformer {
 }
 
 const ITEMS_PER_PAGE = 10;
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 60_000;
 
 export default function OpportunitiesScanner() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [topPerformers, setTopPerformers] = useState<{
     top_24h: TopPerformer[];
+    top_3d: TopPerformer[];
     top_7d: TopPerformer[];
     top_30d: TopPerformer[];
-  }>({ top_24h: [], top_7d: [], top_30d: [] });
+  }>({ top_24h: [], top_3d: [], top_7d: [], top_30d: [] });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastFetchAt, setLastFetchAt] = useState<number | null>(null);
+  const [dataAsOf, setDataAsOf] = useState<string | null>(null);
+  const autoRefreshTick = useRef(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -162,6 +173,29 @@ export default function OpportunitiesScanner() {
     fetchData();
   }, [currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
 
+  // Auto-refresh the scanner list. We intentionally bypass the local in-memory cache so that
+  // the list doesn't lag behind the detail view (both poll at 60s cadence).
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      // The server may still serve cached data (nginx/CF). Do a lightweight cache-bust
+      // periodically so values stay consistent with the detail view.
+      autoRefreshTick.current += 1;
+      const hardRefresh = (autoRefreshTick.current % 2) === 0; // ~ every 2 minutes
+      fetchData({ bypassLocalCache: true, hardRefresh });
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
+
+  const formatAsOf = (iso?: string | null): string | null => {
+    if (!iso) return null;
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return null;
+    const ageS = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    const hhmmss = new Date(ms).toLocaleTimeString([], { hour12: false });
+    return `${hhmmss} (${ageS}s ago)`;
+  };
+
   const computeTopPerformers = (list: Opportunity[]) => {
     if (list.length === 0) {
       return;
@@ -181,6 +215,18 @@ export default function OpportunitiesScanner() {
     const sorted24h = [...withSufficientHistory].sort((a, b) => (b.apr_24h || b.net_apr) - (a.apr_24h || a.net_apr));
     const top3_24h = sorted24h.slice(0, 3).map(o => mapToPerformer(o, 'apr_24h', 'samples_24h'));
 
+    const sorted3d = [...withSufficientHistory]
+      .map((o) => ({ o, apr3d: getApr3d(o) }))
+      .filter((x): x is { o: Opportunity; apr3d: number } => x.apr3d !== undefined)
+      .sort((a, b) => b.apr3d - a.apr3d);
+    const top3_3d = sorted3d.slice(0, 3).map(({ o, apr3d }) => ({
+      symbol: o.symbol,
+      exchange_short: o.exchange_short,
+      exchange_long: o.exchange_long,
+      apr: apr3d,
+      samples: o.samples_3d || o.samples_7d || o.samples,
+    }));
+
     const sorted7d = [...withSufficientHistory].sort((a: Opportunity, b: Opportunity) => (b.apr_7d || 0) - (a.apr_7d || 0));
     const top3_7d = sorted7d.slice(0, 3).map(o => mapToPerformer(o, 'apr_7d', 'samples_7d'));
 
@@ -190,14 +236,17 @@ export default function OpportunitiesScanner() {
 
     setTopPerformers({
       top_24h: top3_24h,
+      top_3d: top3_3d,
       top_7d: top3_7d,
       top_30d: top3_30d
     });
   };
 
-  const fetchData = async () => {
+  const fetchData = async (opts?: { bypassLocalCache?: boolean; hardRefresh?: boolean }) => {
     try {
-      setLoading(true);
+      const initial = opportunities.length === 0;
+      if (initial) setLoading(true);
+      else setRefreshing(true);
 
       const params = {
         min_net_apr: 0,
@@ -210,31 +259,59 @@ export default function OpportunitiesScanner() {
         search: searchQuery || undefined,
         venues: selectedVenues.size === ALL_VENUES.length ? undefined : Array.from(selectedVenues).join(','),
         hide_recently_listed: hideRecentlyListed,
-        hip3_filter: hip3Filter
+        hip3_filter: hip3Filter,
+        ...(opts?.hardRefresh ? { __t: Date.now() } : {}),
       };
 
       const cacheKey = JSON.stringify(params);
       const cached = cacheRef.current.get(cacheKey);
-      if (cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
+      if (!opts?.bypassLocalCache && cached && (Date.now() - cached.ts < CACHE_TTL_MS)) {
         setOpportunities(cached.data);
         setTotalCount(cached.total);
         computeTopPerformers(cached.data);
         setLoading(false);
+        setRefreshing(false);
         return;
       }
 
       const reqId = ++requestSeq.current;
-      const oppsResponse = await axios.get(buildApiUrl('/api/opportunities'), { params });
+      const fetchWithRetry = async () => {
+        const delays = [600, 1200, 2000];
+        for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+          try {
+              return await axios.get(buildApiUrl('/api/opportunities'), {
+                params,
+                timeout: 12000,
+              });
+          } catch (err) {
+            if (attempt === delays.length) throw err;
+            await new Promise(res => setTimeout(res, delays[attempt]));
+          }
+        }
+        throw new Error('unreachable');
+      };
+
+      const oppsResponse = await fetchWithRetry();
       if (reqId !== requestSeq.current) {
         return;
       }
 
-      const opps = oppsResponse.data.opportunities || [];
+      const opps: Opportunity[] = oppsResponse.data.opportunities || [];
       const baseTotal = oppsResponse.data.total_count || opps.length;
       cacheRef.current.set(cacheKey, { data: opps, total: baseTotal, ts: Date.now() });
       setOpportunities(opps);
       setTotalCount(baseTotal);
       computeTopPerformers(opps);
+      setLastFetchAt(Date.now());
+      try {
+        const maxTs = opps
+          .map((o) => o.timestamp)
+          .filter((t) => !!t)
+          .reduce((acc: string | null, t: string) => (acc && acc > t ? acc : t), null);
+        setDataAsOf(maxTs);
+      } catch {
+        setDataAsOf(null);
+      }
 
       const totalPages = Math.max(1, Math.ceil(baseTotal / ITEMS_PER_PAGE));
       const prefetchPage = async (page: number) => {
@@ -244,8 +321,11 @@ export default function OpportunitiesScanner() {
         const preCached = cacheRef.current.get(preKey);
         if (preCached && (Date.now() - preCached.ts < CACHE_TTL_MS)) return;
         try {
-          const res = await axios.get(buildApiUrl('/api/opportunities'), { params: preParams });
-          const preOpps = res.data.opportunities || [];
+          const res = await axios.get(buildApiUrl('/api/opportunities'), {
+            params: preParams,
+            timeout: 12000,
+          });
+          const preOpps: Opportunity[] = res.data.opportunities || [];
           const preTotal = res.data.total_count || preOpps.length;
           cacheRef.current.set(preKey, { data: preOpps, total: preTotal, ts: Date.now() });
         } catch {
@@ -264,6 +344,7 @@ export default function OpportunitiesScanner() {
       console.error(err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -307,6 +388,16 @@ export default function OpportunitiesScanner() {
   };
 
   const formatAPR = (apr: number) => `${apr.toFixed(1)}%`;
+
+  const estimateApr3d = (apr24h?: number, apr7d?: number): number | undefined => {
+    if (!Number.isFinite(apr24h) || !Number.isFinite(apr7d)) return undefined;
+    return (2 * (apr24h as number) + 7 * (apr7d as number)) / 9;
+  };
+
+  const getApr3d = (opp: Opportunity): number | undefined => {
+    if (Number.isFinite(opp.apr_3d)) return opp.apr_3d as number;
+    return estimateApr3d(opp.apr_24h, opp.apr_7d);
+  };
 
   const renderOI = (opp: Opportunity) => {
     const shortBadge = getOISizeBadge(opp.oi_short);
@@ -372,41 +463,90 @@ export default function OpportunitiesScanner() {
     return { label: 'High', icon: 'bank', color: 'text-gray-400' };
   };
 
-  if (loading) {
+  const isInitialLoading = loading && opportunities.length === 0;
+  if (isInitialLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 space-y-4">
-        <div className="w-12 h-12 spinner border-4" />
-        <p className="text-gray-500 dark:text-gray-400 font-medium animate-pulse">Scanning opportunities...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="card border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 animate-fade-in">
-        <div className="flex items-center space-x-3">
-          <AlertCircle className="w-6 h-6 text-red-500" />
-          <div>
-            <p className="text-red-800 dark:text-red-200 font-semibold">{error}</p>
-            <button onClick={fetchData} className="mt-2 btn btn-secondary text-sm">
-              Retry
-            </button>
+      <div className="space-y-6 animate-fade-in">
+        {import.meta.env.DEV && (
+          <div className="card p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">
+              Venues (UI Registry Preview)
+            </div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {ALL_VENUES.map(venue => (
+                <span
+                  key={venue}
+                  className={'px-3 py-1.5 rounded-lg text-sm font-medium bg-gradient-to-r ' + VENUE_COLORS[venue] + ' text-white'}
+                  title="Dev-only: proves venue is wired in the UI even if API is offline."
+                >
+                  {VENUE_DISPLAY_NAMES[venue]}
+                </span>
+              ))}
+            </div>
           </div>
+        )}
+
+        {/* Keep a large, stable layout while the API warms up (improves mobile UX and long-tail LCP). */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="card">
+              <div className="h-5 w-32 bg-gray-200 dark:bg-surface-800 rounded animate-pulse" />
+              <div className="mt-4 h-8 w-24 bg-gray-200 dark:bg-surface-800 rounded animate-pulse" />
+              <div className="mt-3 h-4 w-40 bg-gray-200 dark:bg-surface-800 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between gap-4">
+            <div className="h-6 w-48 bg-gray-200 dark:bg-surface-800 rounded animate-pulse" />
+            <div className="h-9 w-28 bg-gray-200 dark:bg-surface-800 rounded animate-pulse" />
+          </div>
+          <div className="mt-6 space-y-3">
+            <div className="h-10 w-full bg-gray-200 dark:bg-surface-800 rounded animate-pulse" />
+            {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+              <div key={i} className="h-12 w-full bg-gray-200 dark:bg-surface-800 rounded animate-pulse" />
+            ))}
+          </div>
+          <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+            Scanning opportunities...
+          </p>
         </div>
       </div>
     );
   }
 
+  const errorBanner = error ? (
+    <div className="card border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 animate-fade-in">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center space-x-3">
+          <AlertCircle className="w-6 h-6 text-red-500" />
+          <div>
+            <p className="text-red-800 dark:text-red-200 font-semibold">{error}</p>
+            <p className="text-xs text-red-700/80 dark:text-red-200/80 mt-0.5">
+              UI is still usable; data will populate once the API responds.
+            </p>
+          </div>
+        </div>
+        <button onClick={() => fetchData({ bypassLocalCache: true })} className="btn btn-secondary text-sm">
+          Retry
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   const topPerformerCards = [
     { key: 'top_24h', label: 'Avg 24h', icon: Clock, data: topPerformers.top_24h, color: 'from-amber-500 to-orange-500', iconColor: 'text-amber-500', rankColors: ['text-amber-400', 'text-gray-400', 'text-amber-700'] },
+    { key: 'top_3d', label: 'Avg 3 Days', title: 'Average net APR over the last 72h. Falls back to a 24h/7d estimate only if missing.', icon: Zap, data: topPerformers.top_3d, color: 'from-sky-500 to-indigo-600', iconColor: 'text-sky-500', rankColors: ['text-sky-400', 'text-gray-400', 'text-indigo-400'] },
     { key: 'top_7d', label: 'Avg 7 Days', icon: Calendar, data: topPerformers.top_7d, color: 'from-emerald-500 to-green-500', iconColor: 'text-emerald-500', rankColors: ['text-emerald-400', 'text-gray-400', 'text-emerald-700'] },
     { key: 'top_30d', label: 'Avg 30 Days', icon: CalendarDays, data: topPerformers.top_30d, color: 'from-primary-500 to-cyan-500', iconColor: 'text-primary-500', rankColors: ['text-cyan-400', 'text-gray-400', 'text-cyan-700'] },
   ];
 
   return (
     <div className="space-y-6">
+      {errorBanner}
       {/* Top Performers Section - Original Style */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {topPerformerCards.map((card, index) => (
           <div
             key={card.key}
@@ -421,7 +561,7 @@ export default function OpportunitiesScanner() {
                 <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-surface-700">
                   <card.icon className={`w-4 h-4 ${card.iconColor}`} />
                 </div>
-                <span className="data-label">{card.label}</span>
+                <span className="data-label" title={(card as { title?: string }).title}>{card.label}</span>
               </div>
               <Trophy className="w-5 h-5 text-amber-400 opacity-50" />
             </div>
@@ -645,7 +785,45 @@ export default function OpportunitiesScanner() {
             {totalCount} opportunities
             {searchQuery && <span className="text-primary-500"> matching "{searchQuery}"</span>}
           </span>
-          {totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
+          <div className="flex items-center gap-3">
+            {totalPages > 1 && <span>Page {currentPage} / {totalPages}</span>}
+            {dataAsOf && (
+              <span title="Max opportunity timestamp in the current response">
+                as-of {new Date(dataAsOf).toLocaleTimeString()}
+              </span>
+            )}
+            {lastFetchAt && (
+              <span title="Client fetch time">
+                updated {new Date(lastFetchAt).toLocaleTimeString()}
+              </span>
+            )}
+            {refreshing && <div className="w-3 h-3 spinner" />}
+            <button
+              onClick={() => fetchData({ bypassLocalCache: true })}
+              className="px-2 py-1 rounded bg-gray-100 dark:bg-surface-700 hover:bg-gray-200 dark:hover:bg-surface-600 transition-colors"
+              title="Refresh (bypass local cache). Server may still serve cached data."
+            >
+              Refresh
+            </button>
+            <button
+              onClick={() => fetchData({ bypassLocalCache: true, hardRefresh: true })}
+              className="px-2 py-1 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-500/30 transition-colors"
+              title="Hard refresh (adds a cache-busting query param). Use sparingly."
+            >
+              Hard
+            </button>
+            <button
+              onClick={() => setAutoRefresh(v => !v)}
+              className={`px-2 py-1 rounded transition-colors ${
+                autoRefresh
+                  ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/30'
+                  : 'bg-gray-100 dark:bg-surface-700 hover:bg-gray-200 dark:hover:bg-surface-600'
+              }`}
+              title="Auto-refresh every 60s"
+            >
+              Auto {autoRefresh ? 'On' : 'Off'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -732,10 +910,15 @@ export default function OpportunitiesScanner() {
               {/* Center: Net APR - Hero */}
               <div className="flex-1 flex justify-center">
                 <div className="text-center px-8 py-3 rounded-xl bg-gray-50 dark:bg-surface-700/50 border border-gray-100 dark:border-surface-600">
-                  <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1 font-medium">Net APR</div>
+                  <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1 font-medium">Net APR (Current)</div>
                   <div className={`font-mono font-bold text-4xl ${getAPRColor(opp.net_apr)} ${getAPRGlow(opp.net_apr)}`}>
                     {formatAPR(opp.net_apr)}
                   </div>
+                  {formatAsOf(opp.timestamp) && (
+                    <div className="mt-1 text-[10px] text-gray-400" title="Timestamp of the snapshot used for this row.">
+                      as-of {formatAsOf(opp.timestamp)}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -804,16 +987,17 @@ export default function OpportunitiesScanner() {
               <div className="lg:w-80 flex items-center gap-4">
                 {/* Historical Averages - Separated */}
                 <div className="flex-1">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {[
                       { label: '24h Avg', value: opp.apr_24h },
+                      { label: '3d Avg', value: getApr3d(opp), title: 'Average net APR over the last 72h. Falls back to a 24h/7d estimate only if missing.' },
                       { label: '7d Avg', value: opp.apr_7d },
                       { label: '30d Avg', value: opp.apr_30d },
                     ].map((period) => (
-                      <div key={period.label} className="text-center p-2 rounded-lg bg-gray-50 dark:bg-surface-800 border border-gray-100 dark:border-surface-700">
+                      <div key={period.label} className="text-center p-2 rounded-lg bg-gray-50 dark:bg-surface-800 border border-gray-100 dark:border-surface-700" title={(period as { title?: string }).title}>
                         <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">{period.label}</div>
-                        <div className={`font-mono text-sm font-semibold ${period.value !== undefined ? getAPRColor(period.value) : 'text-gray-400'}`}>
-                          {period.value !== undefined ? formatAPR(period.value) : '—'}
+                        <div className={`font-mono text-sm font-semibold ${Number.isFinite(period.value) ? getAPRColor(period.value as number) : 'text-gray-400'}`}>
+                          {Number.isFinite(period.value) ? formatAPR(period.value as number) : '—'}
                         </div>
                       </div>
                     ))}

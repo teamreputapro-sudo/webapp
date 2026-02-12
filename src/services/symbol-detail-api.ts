@@ -276,7 +276,7 @@ export const mockAPI = {
     const dataPoints = Math.min(hours, 100); // Max 100 points
     const interval = (hours * 60 * 60 * 1000) / dataPoints;
     const now = Date.now();
-    const venues = ['hyperliquid', 'lighter', 'pacifica', 'extended'];
+    const venues = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational', 'ethereal'];
 
     return Array.from({ length: dataPoints }, (_, i) => {
       const timestamp = new Date(now - (dataPoints - i) * interval).toISOString();
@@ -302,7 +302,7 @@ export const mockAPI = {
    * Updated to match backend API response format
    */
   generateMockExchangeInfo(_symbol: string): ExchangeDetailInfo[] {
-    const venues = ['hyperliquid', 'lighter', 'pacifica', 'extended'];
+    const venues = ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational', 'ethereal'];
 
     return venues.map((venue, idx) => ({
       name: venue,
@@ -343,7 +343,7 @@ export const mockAPI = {
   generateMockAnalytics(symbol: string): SymbolAnalytics {
     return {
       symbol,
-      venues: ['hyperliquid', 'lighter', 'pacifica', 'extended'],
+      venues: ['hyperliquid', 'lighter', 'pacifica', 'extended', 'variational', 'ethereal'],
       data_points_24h: Math.floor(Math.random() * 1000) + 500,
       data_points_7d: Math.floor(Math.random() * 7000) + 3500,
       avg_funding_24h: Math.random() * 0.0002,

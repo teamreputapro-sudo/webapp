@@ -15,12 +15,39 @@ import { TrendingUp, LineChart, BookOpen, Menu, X, WifiOff, AlertCircle, Moon, S
 import OpportunitiesScanner from './components/OpportunitiesScanner';
 import AdBanner from './components/AdBanner';
 import SEO from './components/SEO';
+import SymbolDetailRoute from './components/SymbolDetailRoute';
 import { api } from './services/api';
 import { withBase } from './lib/assetBase';
-import { getLandingPath, getMainPaths, getScannerPath, isScannerMode } from './lib/routerBase';
+import { getLandingPath, getMainPaths, getScannerDetailRoute, getScannerPath, isScannerMode } from './lib/routerBase';
 
-// Route-level code splitting: keep heavy dependencies (three, charts, article data)
-// out of the initial scanner bundle to reduce long-tail LCP on slow mobile devices.
+const ExitScannerToRoot = () => {
+  useEffect(() => {
+    // /scanner/home is a legacy-ish URL. We want it to behave like the canonical home: "/".
+    // Use a hard navigation to escape the /scanner basepath.
+    window.location.replace(`${window.location.origin}/`);
+  }, []);
+
+  return (
+    <div className="card animate-fade-in">
+      <div className="text-sm text-gray-600 dark:text-gray-400">Redirecting to Home…</div>
+    </div>
+  );
+};
+
+const ScannerRedirect = () => {
+  useEffect(() => {
+    const { pathname, search, hash } = window.location;
+    const target = pathname === '/scanner' ? '/scanner/' : pathname;
+    window.location.replace(`${window.location.origin}${target}${search}${hash}`);
+  }, []);
+
+  return (
+    <div className="card animate-fade-in">
+      <div className="text-sm text-gray-600 dark:text-gray-400">Redirecting to Scanner…</div>
+    </div>
+  );
+};
+
 const LandingPage = lazy(() => import('./components/LandingPage'));
 const LiveTradingChart = lazy(() => import('./components/LiveTradingChart'));
 const Insights = lazy(() => import('./components/Insights'));
@@ -723,20 +750,20 @@ export default function App() {
   const scannerPath = getScannerPath();
   const landingPath = getLandingPath();
   const navigation = [
+    { path: landingPath, name: 'Home', icon: Home, description: 'Funding rate arbitrage overview' },
     { path: scannerPath, name: 'Scanner', icon: TrendingUp, description: 'Find arbitrage opportunities' },
     { path: '/chart', name: 'Live Chart', icon: LineChart, description: 'Real-time price charts' },
     { path: '/insights', name: 'Insights', icon: BookOpen, description: 'Learn about funding arbitrage' },
-    { path: landingPath, name: 'Home', icon: Home, description: 'Funding rate arbitrage overview' },
   ];
 
   const currentNav = navigation.find(n => n.path === location.pathname) || navigation[0];
   const isMainPage = getMainPaths().includes(location.pathname);
   // Treat legacy direct paths as "Landing/Home" too, so AdSense banners don't leave gaps there.
+  // This also covers users hitting `/home` directly in root mode (fallback route).
   const isLandingPage =
     location.pathname === landingPath ||
     location.pathname === '/home' ||
     location.pathname === '/index.html';
-  const showAdBanners = !isLandingPage;
 
   return (
     <div className="min-h-screen transition-colors flex flex-col">
@@ -858,7 +885,6 @@ export default function App() {
                   <Link
                     key={item.path}
                     to={item.path}
-                    reloadDocument={item.path === scannerPath && !isScannerMode()}
                     className={`flex items-center space-x-3 w-full px-4 py-3 rounded-lg font-medium font-display transition-all duration-200 animate-fade-in-up`}
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
@@ -875,8 +901,8 @@ export default function App() {
         )}
       </header>
 
-      {/* Top Ad Banner (not on Landing/Home). Reserve space to avoid CLS while backendStatus flips. */}
-      {showAdBanners && (
+      {/* Top Ad Banner: reserve space to prevent CLS (backendStatus flips after health check). */}
+      {!isLandingPage && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 w-full">
           <AdBanner
             slot="2893729326"
@@ -931,22 +957,26 @@ export default function App() {
 
         {/* Routes */}
         <Suspense
-          fallback={
-            <div className="flex items-center justify-center h-48 text-gray-400">
-              Loading…
+          fallback={(
+            <div className="animate-fade-in-up card">
+              <div className="h-5 w-40 bg-gray-200/70 dark:bg-surface-700 rounded mb-3" />
+              <div className="h-4 w-72 bg-gray-200/60 dark:bg-surface-700 rounded mb-2" />
+              <div className="h-4 w-64 bg-gray-200/50 dark:bg-surface-700 rounded" />
             </div>
-          }
+          )}
         >
           <Routes>
             {isScannerMode() ? (
               <>
                 <Route path="/" element={<OpportunitiesScanner />} />
-                <Route path="/home" element={<LandingPage />} />
+                <Route path={getScannerDetailRoute()} element={<SymbolDetailRoute />} />
+                <Route path="/home" element={<ExitScannerToRoot />} />
               </>
             ) : (
               <>
                 <Route path="/" element={<LandingPage />} />
-                <Route path="/scanner" element={<OpportunitiesScanner />} />
+                <Route path="/scanner" element={<ScannerRedirect />} />
+                <Route path={getScannerDetailRoute()} element={<ScannerRedirect />} />
               </>
             )}
             <Route path="/chart" element={<LiveTradingChart />} />
@@ -965,8 +995,8 @@ export default function App() {
         </Suspense>
       </main>
 
-      {/* Bottom Ad Banner (not on Landing/Home). Reserve space to avoid CLS while backendStatus flips. */}
-      {showAdBanners && (
+      {/* Bottom Ad Banner: reserve space to prevent CLS. */}
+      {!isLandingPage && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 w-full">
           <AdBanner
             slot="3776222694"

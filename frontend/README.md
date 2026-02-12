@@ -140,6 +140,11 @@ curl -s https://54strategydigital.com/ | head -20
     - Se agregó la 6ª posición para `ethereal`.
     - Se agregó fallback defensivo cuando falte una posición.
 
+### Build Sync Guardrail - 2026-02-12
+- El deploy productivo usa `src/` (no solo `frontend/src/`).
+- Se detectó un desfase entre ambos árboles que rompía `/scanner/s/:symbol` y mostraba fallback a home.
+- Se re-sincronizaron los archivos de scanner/detail entre `frontend/src` y `src`.
+
 ### Opportunities Scanner
 - Oportunidades de arbitraje en tiempo real
 - Filtro por APR minimo

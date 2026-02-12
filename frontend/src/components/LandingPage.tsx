@@ -316,8 +316,7 @@ const OrbitalScene = ({ onReady, scrollProgress = 0 }: OrbitalSceneProps) => {
     };
 
     const gltfLoader = new GLTFLoader();
-    // Must respect `/scanner/` base path when served from Cloudflare Pages under a subpath.
-    const ktx2Loader = new KTX2Loader().setTranscoderPath(withBase('ktx2/'));
+    const ktx2Loader = new KTX2Loader().setTranscoderPath('/ktx2/');
     ktx2Loader.detectSupport(renderer);
     gltfLoader.setKTX2Loader(ktx2Loader);
     gltfLoader.setMeshoptDecoder(MeshoptDecoder);
@@ -2321,13 +2320,13 @@ export default function LandingPage() {
   }, [userInteracted, sceneReady]);
 
   const features = [
-    { icon: Activity, title: 'Real-Time Scanning', description: 'Market data refreshed every ~1 minute across 6 DEX venues.', color: '#00d4ff' },
+    { icon: Activity, title: 'Real-Time Scanning', description: `Market data refreshed every ~1 minute across ${VENUES.length} DEX venues.`, color: '#00d4ff' },
     { icon: Shield, title: 'Delta-Neutral', description: 'Hedge positions across venues. Profit from spreads, not direction.', color: '#00ff9f' },
     { icon: Target, title: 'Self-Custody', description: 'Trade on DEXs only. Your keys, your funds. Zero counterparty risk. (dApps are not exempt from exploits)', color: '#ff00ff' },
   ];
 
   const stats = [
-    { label: 'Venues', value: '6', icon: Layers },
+    { label: 'Venues', value: '5', icon: Layers },
     { label: 'Markets', value: '500+', icon: BarChart3 },
     { label: 'Max APR', value: '150%+', icon: Percent },
     { label: 'Updates', value: 'Live', icon: Clock },
@@ -2359,7 +2358,7 @@ export default function LandingPage() {
               <img src={withBase('logo-54sd-mini.png')} alt="54SD" className="h-8 w-auto" />
             </Link>
             <div className="flex items-center gap-4">
-              <Link to={getScannerPath()} reloadDocument className="text-white/60 hover:text-white transition-colors text-sm">
+              <Link to={getScannerPath()} className="text-white/60 hover:text-white transition-colors text-sm">
                 Scanner
               </Link>
               <Link to="/insights" className="text-white/60 hover:text-white transition-colors text-sm">
@@ -2367,7 +2366,6 @@ export default function LandingPage() {
               </Link>
               <Link
                 to={getScannerPath()}
-                reloadDocument
                 className="px-3 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white text-sm hover:bg-white/20 transition-all"
               >
                 Launch
@@ -2402,13 +2400,12 @@ export default function LandingPage() {
 
                 <p className="text-sm text-white/50 mb-5 leading-relaxed">
                   Find delta-neutral opportunities with APRs from 20% to 150%+.
-                  Real-time scanning across 6 DEX venues.
+                  {`Real-time scanning across ${VENUES.length} DEX venues.`}
                 </p>
 
                 <div className="flex flex-wrap gap-3">
                   <Link
                     to={getScannerPath()}
-                    reloadDocument
                     className="group inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-neon-cyan to-neon-green text-surface-900 text-sm font-semibold hover:shadow-[0_0_20px_rgba(0,255,159,0.3)] transition-all"
                   >
                     <TrendingUp className="w-4 h-4" />
@@ -2498,7 +2495,7 @@ export default function LandingPage() {
           <ScrollReveal>
             <div className="text-center mb-4">
               <h2 className="text-2xl md:text-3xl font-bold font-display text-white mb-2">
-                <span className="text-neon-cyan">6 Venues</span>, One Network
+                <span className="text-neon-cyan">{VENUES.length} Venues</span>, One Network
               </h2>
               <p className="text-white/40 text-sm max-w-lg mx-auto mb-4">
                 Real-time data aggregation from leading decentralized perpetual exchanges, converging into unified intelligence.
@@ -2590,7 +2587,7 @@ export default function LandingPage() {
                     Funding Rate Scanner
                   </h3>
                   <p className="text-white/50 text-sm mb-6 leading-relaxed">
-                    Real-time aggregation of funding rates, spreads, and APR opportunities across 6 DEX venues.
+                    {`Real-time aggregation of funding rates, spreads, and APR opportunities across ${VENUES.length} DEX venues.`}
                     Identify the highest-yield delta-neutral positions instantly.
                   </p>
 
@@ -2598,7 +2595,7 @@ export default function LandingPage() {
                   <ul className="space-y-2 mb-6">
                     {[
                       'Real-time funding rates',
-                      '6 DEX venues monitored',
+                      `${VENUES.length} DEX venues monitored`,
                       'APR calculations',
                       'Spread analysis'
                     ].map((feature, i) => (
@@ -2612,7 +2609,6 @@ export default function LandingPage() {
                   {/* CTA */}
                   <Link
                     to={getScannerPath()}
-                    reloadDocument
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan text-sm font-medium hover:bg-neon-cyan/20 transition-colors group/btn"
                   >
                     <Zap className="w-4 h-4" />
@@ -3122,7 +3118,7 @@ export default function LandingPage() {
                 Ready to Find Opportunities?
               </h2>
               <p className="text-white/40 text-sm mb-6 max-w-md mx-auto">
-                Scan real-time funding rates across 6 DEX venues.
+                {`Scan real-time funding rates across ${VENUES.length} DEX venues.`}
               </p>
               <Link
                 to="/"
