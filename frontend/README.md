@@ -124,6 +124,19 @@ curl -s https://54strategydigital.com/ | head -20
 - Cadencia unificada a 60s en frontend:
   - `OpportunitiesScanner` auto-refresh/caché local: `60s`.
   - `SymbolDetailModal` polling live + cachés derivados: `60s`.
+- `3d Avg` en scanner pasa a usar `apr_3d` real de backend (ventana 72h) cuando está disponible.
+  - Fallback: estimación desde `24h/7d` solo si `apr_3d` no existe.
+- En backend, oportunidades HIP-3 usan `spread_bps` ejecutable con la misma fórmula de detalle:
+  - `ask(long) - bid(short)` normalizado por `ask(long)`.
+- En detalle, la cabecera prioriza `7d/30d` derivados del historial del propio par seleccionado para evitar discrepancias por estado stale del scanner.
+
+### Home Stability Hotfix - 2026-02-12
+- Fix crítico en `LandingPage` (home en blanco):
+  - Causa: `VENUES` tenía 6 entradas (incluyendo `ethereal`) y el layout 3D solo definía 5 posiciones.
+  - Síntoma: runtime crash `Cannot read properties of undefined (reading 'z')`.
+  - Solución:
+    - Se agregó la 6ª posición para `ethereal`.
+    - Se agregó fallback defensivo cuando falte una posición.
 
 ### Opportunities Scanner
 - Oportunidades de arbitraje en tiempo real

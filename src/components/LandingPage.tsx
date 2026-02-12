@@ -1378,13 +1378,12 @@ const VenueNetworkScene = () => {
     const pentagonGroup = new THREE.Group();
     scene.add(pentagonGroup);
 
-    // ===== CREATE MIDDLE LAYER (5 venue badges in 3D PENTAGON - STATIC) =====
-    // 3D Pentagon formation: 1 front, 2 sides, 2 back (like orbital animation)
-    // VENUES order: [Hyperliquid, Lighter, Pacifica, Extended, Variational]
+    // ===== CREATE MIDDLE LAYER (venue badges in 3D layout - STATIC) =====
+    // VENUES order: [Hyperliquid, Lighter, Pacifica, Extended, Variational, Ethereal]
     const middleCubes: THREE.Group[] = [];
     const venuePositions: { x: number; z: number; angle: number }[] = [];
 
-    // Define 3D positions for pentagon formation (viewer looking from +Z toward -Z)
+    // Define 3D positions (viewer looking from +Z toward -Z)
     // Z negative = closer to camera (front), Z positive = further (back)
     const pentagonPositions3D = [
       { x: 0, z: -GEO_CONFIG.pentagonDepth * 0.8 },                          // 0: Hyperliquid - FRONT CENTER
@@ -1392,10 +1391,11 @@ const VenueNetworkScene = () => {
       { x: GEO_CONFIG.pentagonRadius, z: 0 },                                // 2: Pacifica - RIGHT SIDE
       { x: -GEO_CONFIG.pentagonRadius * 0.6, z: GEO_CONFIG.pentagonDepth },  // 3: Extended - BACK LEFT
       { x: GEO_CONFIG.pentagonRadius * 0.6, z: GEO_CONFIG.pentagonDepth },   // 4: Variational - BACK RIGHT
+      { x: 0, z: GEO_CONFIG.pentagonDepth * 1.45 },                          // 5: Ethereal - BACK CENTER
     ];
 
     VENUES.forEach((venue, i) => {
-      const pos = pentagonPositions3D[i];
+      const pos = pentagonPositions3D[i] ?? { x: 0, z: GEO_CONFIG.pentagonDepth };
       const angle = Math.atan2(pos.z, pos.x);
       venuePositions.push({ x: pos.x, z: pos.z, angle });
 

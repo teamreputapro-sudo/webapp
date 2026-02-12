@@ -103,6 +103,16 @@ Consistency update (2026-02-12):
 - Frontend cadence aligned to `60s`:
   - Scanner auto-refresh/local cache
   - Detail live polling + derived caches
+- Scanner `3d Avg` now consumes backend `apr_3d` (real 72h window) when present.
+  - Fallback to an estimated value from `24h/7d` only when missing.
+- HIP-3 opportunities `spread_bps` now follows the same executable formula as detail:
+  - `ask(long) - bid(short)` normalized by `ask(long)`.
+- Detail header `7d/30d` averages prioritize values derived from detail history for the selected pair.
+
+Landing stability hotfix (2026-02-12):
+- Root home blank screen was caused by venue layout mismatch in `LandingPage`.
+  - `VENUES` had 6 items while the 3D position array had 5.
+- Fixed by adding the missing Ethereal position and a defensive fallback for missing positions.
 
 Verification notes:
 - `npm run build` in `frontend/` passes.

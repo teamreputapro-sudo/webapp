@@ -79,9 +79,11 @@ interface Opportunity {
   max_apr?: number;
   min_apr?: number;
   apr_24h?: number;
+  apr_3d?: number;
   apr_7d?: number;
   apr_30d?: number;
   samples_24h?: number;
+  samples_3d?: number;
   samples_7d?: number;
   samples_30d?: number;
   samples: number;
@@ -207,13 +209,6 @@ export default function OpportunitiesScanner() {
       samples: o[samplesField] || o.samples
     });
 
-    const estimateApr3d = (apr24h?: number, apr7d?: number): number | undefined => {
-      if (!Number.isFinite(apr24h) || !Number.isFinite(apr7d)) return undefined;
-      // Heuristic estimate when backend doesn't provide a real 72h window:
-      // derived from 24h and 7d averages: (2*apr24h + 7*apr7d)/9.
-      return (2 * (apr24h as number) + 7 * (apr7d as number)) / 9;
-    };
-
     // Only include symbols with sufficient historical data in top performers (exclude recently listed)
     const withSufficientHistory = list.filter((o: Opportunity) => (o.samples_7d || 0) >= MIN_SAMPLES_7D);
 
@@ -221,7 +216,7 @@ export default function OpportunitiesScanner() {
     const top3_24h = sorted24h.slice(0, 3).map(o => mapToPerformer(o, 'apr_24h', 'samples_24h'));
 
     const sorted3d = [...withSufficientHistory]
-      .map((o) => ({ o, apr3d: estimateApr3d(o.apr_24h, o.apr_7d) }))
+      .map((o) => ({ o, apr3d: getApr3d(o) }))
       .filter((x): x is { o: Opportunity; apr3d: number } => x.apr3d !== undefined)
       .sort((a, b) => b.apr3d - a.apr3d);
     const top3_3d = sorted3d.slice(0, 3).map(({ o, apr3d }) => ({
@@ -229,7 +224,7 @@ export default function OpportunitiesScanner() {
       exchange_short: o.exchange_short,
       exchange_long: o.exchange_long,
       apr: apr3d,
-      samples: o.samples_7d || o.samples,
+      samples: o.samples_3d || o.samples_7d || o.samples,
     }));
 
     const sorted7d = [...withSufficientHistory].sort((a: Opportunity, b: Opportunity) => (b.apr_7d || 0) - (a.apr_7d || 0));
@@ -393,6 +388,11 @@ export default function OpportunitiesScanner() {
     return (2 * (apr24h as number) + 7 * (apr7d as number)) / 9;
   };
 
+  const getApr3d = (opp: Opportunity): number | undefined => {
+    if (Number.isFinite(opp.apr_3d)) return opp.apr_3d as number;
+    return estimateApr3d(opp.apr_24h, opp.apr_7d);
+  };
+
   const renderOI = (opp: Opportunity) => {
     const shortBadge = getOISizeBadge(opp.oi_short);
     const longBadge = getOISizeBadge(opp.oi_long);
@@ -531,7 +531,7 @@ export default function OpportunitiesScanner() {
 
   const topPerformerCards = [
     { key: 'top_24h', label: 'Avg 24h', icon: Clock, data: topPerformers.top_24h, color: 'from-amber-500 to-orange-500', iconColor: 'text-amber-500', rankColors: ['text-amber-400', 'text-gray-400', 'text-amber-700'] },
-    { key: 'top_3d', label: 'Avg 3 Days*', title: 'Heuristic estimate derived from 24h and 7d averages. For exact 72h, backend must return apr_3d.', icon: Zap, data: topPerformers.top_3d, color: 'from-sky-500 to-indigo-600', iconColor: 'text-sky-500', rankColors: ['text-sky-400', 'text-gray-400', 'text-indigo-400'] },
+    { key: 'top_3d', label: 'Avg 3 Days', title: 'Average net APR over the last 72h. Falls back to a 24h/7d estimate only if missing.', icon: Zap, data: topPerformers.top_3d, color: 'from-sky-500 to-indigo-600', iconColor: 'text-sky-500', rankColors: ['text-sky-400', 'text-gray-400', 'text-indigo-400'] },
     { key: 'top_7d', label: 'Avg 7 Days', icon: Calendar, data: topPerformers.top_7d, color: 'from-emerald-500 to-green-500', iconColor: 'text-emerald-500', rankColors: ['text-emerald-400', 'text-gray-400', 'text-emerald-700'] },
     { key: 'top_30d', label: 'Avg 30 Days', icon: CalendarDays, data: topPerformers.top_30d, color: 'from-primary-500 to-cyan-500', iconColor: 'text-primary-500', rankColors: ['text-cyan-400', 'text-gray-400', 'text-cyan-700'] },
   ];
@@ -984,14 +984,14 @@ export default function OpportunitiesScanner() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {[
                       { label: '24h Avg', value: opp.apr_24h },
-                      { label: '3d Avg*', value: estimateApr3d(opp.apr_24h, opp.apr_7d), title: 'Estimated from 24h and 7d averages. Exact 72h requires backend support.' },
+                      { label: '3d Avg', value: getApr3d(opp), title: 'Average net APR over the last 72h. Falls back to a 24h/7d estimate only if missing.' },
                       { label: '7d Avg', value: opp.apr_7d },
                       { label: '30d Avg', value: opp.apr_30d },
                     ].map((period) => (
                       <div key={period.label} className="text-center p-2 rounded-lg bg-gray-50 dark:bg-surface-800 border border-gray-100 dark:border-surface-700" title={(period as { title?: string }).title}>
                         <div className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">{period.label}</div>
-                        <div className={`font-mono text-sm font-semibold ${period.value !== undefined ? getAPRColor(period.value) : 'text-gray-400'}`}>
-                          {period.value !== undefined ? formatAPR(period.value) : '—'}
+                        <div className={`font-mono text-sm font-semibold ${Number.isFinite(period.value) ? getAPRColor(period.value as number) : 'text-gray-400'}`}>
+                          {Number.isFinite(period.value) ? formatAPR(period.value as number) : '—'}
                         </div>
                       </div>
                     ))}

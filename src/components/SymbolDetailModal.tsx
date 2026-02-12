@@ -626,8 +626,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
   const currentNetApr = liveSnapshot?.funding_delta_apr ?? opportunity?.net_apr ?? avgApr3d ?? 0;
   const currentSpreadBps = liveSnapshot?.price_spread_bps ?? opportunity?.spread_bps ?? 0;
-  const headerAvg7d = opportunity?.apr_7d ?? avgApr7dDerived;
-  const headerAvg30d = opportunity?.apr_30d ?? avgApr30dDerived;
+  // Prefer values derived from the detail's own pair-filtered history
+  // so header averages stay consistent with the charts in this view.
+  const headerAvg7d = avgApr7dDerived ?? opportunity?.apr_7d;
+  const headerAvg30d = avgApr30dDerived ?? opportunity?.apr_30d;
 
   const wrapperClass = mode === 'modal'
     ? 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
