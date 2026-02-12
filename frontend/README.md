@@ -148,6 +148,17 @@ curl -s https://54strategydigital.com/ | head -20
 - Se detectó un desfase entre ambos árboles que rompía `/scanner/s/:symbol` y mostraba fallback a home.
 - Se re-sincronizaron los archivos de scanner/detail entre `frontend/src` y `src`.
 
+### Performance & HIP-3 Coverage - 2026-02-12
+- Frontend:
+  - Scanner cancela requests en vuelo al cambiar filtros (evita solapamiento de llamadas).
+  - Timeouts ajustados para evitar UI bloqueada.
+  - Prefetch de páginas reducido a escenarios ligeros (`all` sin búsqueda), para bajar carga.
+  - Detail evita recalcular 3d/7d/30d por API cuando ya vienen en `opportunity` del scanner para el mismo par.
+- Backend:
+  - `opportunities` usa caché de universo base (reutilizable entre filtros/paginación) para evitar recomputar fetch pesado en cada cambio UI.
+  - En búsquedas por símbolo se amplía el pool HIP-3 para no perder mercados válidos por truncado top-N.
+  - Dedupe de oportunidades por par (`symbol+legs+dex`) para consistencia de listado.
+
 ### Opportunities Scanner
 - Oportunidades de arbitraje en tiempo real
 - Filtro por APR minimo

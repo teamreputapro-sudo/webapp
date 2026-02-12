@@ -134,6 +134,11 @@ Source sync note (2026-02-12):
   - `components/SymbolDetailRoute.tsx`
   - `services/symbol-detail-api.ts`
 
+Performance note (2026-02-12):
+- Scanner frontend now cancels stale in-flight API requests and limits page prefetch to reduce backend pressure.
+- Detail view skips extra long-window average fetches when scanner already passes `apr_3d/apr_7d/apr_30d` for the same selected pair.
+- Backend `opportunities` endpoint now caches a reusable universe and widens HIP-3 pools for symbol searches to avoid missing pairs like `PUMP/SUI/DOGE`.
+
 ---
 
 ## Where to read more
