@@ -279,7 +279,10 @@ export default function OpportunitiesScanner() {
         const delays = [600, 1200, 2000];
         for (let attempt = 0; attempt <= delays.length; attempt += 1) {
           try {
-            return await axios.get(buildApiUrl('/api/opportunities'), { params });
+              return await axios.get(buildApiUrl('/api/opportunities'), {
+                params,
+                timeout: 12000,
+              });
           } catch (err) {
             if (attempt === delays.length) throw err;
             await new Promise(res => setTimeout(res, delays[attempt]));
@@ -318,7 +321,10 @@ export default function OpportunitiesScanner() {
         const preCached = cacheRef.current.get(preKey);
         if (preCached && (Date.now() - preCached.ts < CACHE_TTL_MS)) return;
         try {
-          const res = await axios.get(buildApiUrl('/api/opportunities'), { params: preParams });
+          const res = await axios.get(buildApiUrl('/api/opportunities'), {
+            params: preParams,
+            timeout: 12000,
+          });
           const preOpps: Opportunity[] = res.data.opportunities || [];
           const preTotal = res.data.total_count || preOpps.length;
           cacheRef.current.set(preKey, { data: preOpps, total: preTotal, ts: Date.now() });
