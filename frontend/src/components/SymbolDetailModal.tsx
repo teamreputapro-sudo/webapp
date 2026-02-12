@@ -84,6 +84,10 @@ interface SymbolStats {
   samples: number;
 }
 
+type DisplayExchangeInfo = ExchangeInfo & {
+  missing?: boolean;
+};
+
 type CacheEntry = {
   ts: number;
   historicalData: HistoricalData[];
@@ -99,12 +103,12 @@ type CacheEntry = {
 };
 
 const DETAIL_CACHE = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 120 * 1000;
+const CACHE_TTL_MS = 60 * 1000;
 
 const THREED_AVG_CACHE = new Map<string, { ts: number; avgApr3d: number | null }>();
-const THREED_AVG_TTL_MS = 120 * 1000;
+const THREED_AVG_TTL_MS = 60 * 1000;
 const LONGTERM_AVG_CACHE = new Map<string, { ts: number; avgApr7d: number | null; avgApr30d: number | null }>();
-const LONGTERM_AVG_TTL_MS = 120 * 1000;
+const LONGTERM_AVG_TTL_MS = 60 * 1000;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
 const ZOOM_STEP = 1.5;
@@ -171,7 +175,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
   useEffect(() => {
     fetchSymbolData();
-    const interval = setInterval(fetchLiveData, 30000); // Update every 30s
+    const interval = setInterval(fetchLiveData, 60000); // Update every 60s
     return () => clearInterval(interval);
   }, [symbol, timeframe, selectedVenues]);
 
@@ -430,14 +434,42 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
   // Get unique venue combinations from historical data
   const getVenueCombinations = () => {
-    const combinations = new Set<string>();
-    historicalData.forEach(d => {
-      combinations.add(`${d.venue_short}|${d.venue_long}`);
+    const combinations = new Map<string, {
+      short: string;
+      long: string;
+      dexShort?: string | null;
+      dexLong?: string | null;
+    }>();
+
+    symbolStats.forEach((s) => {
+      const key = `${s.venue_short}|${s.venue_long}|${s.dex_name_short || ''}|${s.dex_name_long || ''}`;
+      combinations.set(key, {
+        short: s.venue_short,
+        long: s.venue_long,
+        dexShort: s.dex_name_short || null,
+        dexLong: s.dex_name_long || null,
+      });
     });
-    return Array.from(combinations).map(c => {
-      const [short, long] = c.split('|');
-      return { short, long };
+
+    historicalData.forEach((d) => {
+      const carryCurrentDex =
+        selectedVenues &&
+        selectedVenues.short === d.venue_short &&
+        selectedVenues.long === d.venue_long;
+      const dexShort = carryCurrentDex ? (selectedVenues.dexShort || null) : null;
+      const dexLong = carryCurrentDex ? (selectedVenues.dexLong || null) : null;
+      const key = `${d.venue_short}|${d.venue_long}|${dexShort || ''}|${dexLong || ''}`;
+      if (!combinations.has(key)) {
+        combinations.set(key, {
+          short: d.venue_short,
+          long: d.venue_long,
+          dexShort,
+          dexLong,
+        });
+      }
     });
+
+    return Array.from(combinations.values());
   };
 
   // Filter historical data by selected venues
@@ -541,6 +573,9 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
   const simulation = calculateSimulation();
   const venueCombinations = getVenueCombinations();
+  const selectedVenueValue = selectedVenues
+    ? `${selectedVenues.short}|${selectedVenues.long}|${selectedVenues.dexShort || ''}|${selectedVenues.dexLong || ''}`
+    : '';
 
   const formatAPR = (apr: number) => {
     const absApr = Math.abs(apr);
@@ -584,9 +619,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
   const hasOiData = !!(minOi && minOi > 0);
 
   const getSpreadColor = (spreadBps: number) => {
-    if (spreadBps < 10) return 'text-green-400';
-    if (spreadBps < 30) return 'text-yellow-400';
-    return 'text-red-400';
+    return spreadBps >= 0 ? 'text-emerald-400' : 'text-red-400';
   };
 
   const getOISizeBadge = (oi?: number): { label: string; color: string } => {
@@ -628,6 +661,46 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
   const currentSpreadBps = liveSnapshot?.price_spread_bps ?? opportunity?.spread_bps ?? 0;
   const headerAvg7d = opportunity?.apr_7d ?? avgApr7dDerived;
   const headerAvg30d = opportunity?.apr_30d ?? avgApr30dDerived;
+  const displayExchangeInfo: DisplayExchangeInfo[] = (() => {
+    const shortVenue = selectedVenues?.short || liveSnapshot?.venue_short || opportunity?.exchange_short || opportunity?.short_exchange;
+    const longVenue = selectedVenues?.long || liveSnapshot?.venue_long || opportunity?.exchange_long || opportunity?.long_exchange;
+    const shortDex = selectedVenues?.dexShort ?? opportunity?.dex_name_short ?? null;
+    const longDex = selectedVenues?.dexLong ?? opportunity?.dex_name_long ?? null;
+    const norm = (v?: string | null) => (v || '').trim().toLowerCase();
+    const sameDex = (a?: string | null, b?: string | null) => (a || '') === (b || '');
+
+    const pick = (type: 'short' | 'long', venue?: string, dex?: string | null): ExchangeInfo | null => {
+      if (!venue) return null;
+      return (
+        exchangeInfo.find((ex) => ex.type === type && norm(ex.name) === norm(venue) && sameDex(ex.dex_name, dex)) ||
+        exchangeInfo.find((ex) => ex.type === type && norm(ex.name) === norm(venue)) ||
+        null
+      );
+    };
+
+    const placeholder = (type: 'short' | 'long', venue?: string, dex?: string | null): DisplayExchangeInfo => ({
+      name: venue || (type === 'short' ? 'short venue' : 'long venue'),
+      type,
+      dex_name: dex || null,
+      funding_rate: 0,
+      apr: 0,
+      maker_fee: 0,
+      taker_fee: 0,
+      volume_24h: 'N/A',
+      open_interest: 'N/A',
+      last_update: '',
+      missing: true,
+    });
+
+    if (!shortVenue && !longVenue) {
+      return exchangeInfo.slice(0, 2).map((ex) => ({ ...ex }));
+    }
+
+    return [
+      pick('short', shortVenue, shortDex) || placeholder('short', shortVenue, shortDex),
+      pick('long', longVenue, longDex) || placeholder('long', longVenue, longDex),
+    ];
+  })();
 
   const wrapperClass = mode === 'modal'
     ? 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
@@ -662,10 +735,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
                 <div className="md:col-span-4 rounded-lg border border-blue-800/60 bg-blue-900/10 px-4 py-3 flex flex-col justify-center">
                   <div className="text-[10px] uppercase text-gray-400 tracking-wide">Price Spread</div>
-                  <div className="font-mono text-xl text-emerald-400 font-semibold">
+                  <div className={`font-mono text-xl font-semibold ${getSpreadColor(currentSpreadBps)}`}>
                     {currentSpreadBps >= 0 ? '+' : ''}{currentSpreadBps.toFixed(1)} bps
                   </div>
-                  <div className="text-sm text-emerald-300">
+                  <div className={`text-sm ${getSpreadColor(currentSpreadBps)}`}>
                     ({currentSpreadBps >= 0 ? '+' : ''}{(currentSpreadBps / 100).toFixed(2)}%)
                   </div>
                 </div>
@@ -716,16 +789,21 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     {/* Venue selector */}
                     {venueCombinations.length > 1 && (
                       <select
-                        value={selectedVenues ? `${selectedVenues.short}|${selectedVenues.long}` : ''}
+                        value={selectedVenueValue}
                         onChange={(e) => {
-                          const [short, long] = e.target.value.split('|');
-                          setSelectedVenues({ short, long });
+                          const [short, long, dexShort, dexLong] = e.target.value.split('|');
+                          setSelectedVenues({
+                            short,
+                            long,
+                            dexShort: dexShort || null,
+                            dexLong: dexLong || null,
+                          });
                         }}
                         className="bg-gray-700 text-white text-sm rounded px-2 py-1 border border-gray-600"
                       >
                         {venueCombinations.map((v, idx) => (
-                          <option key={idx} value={`${v.short}|${v.long}`}>
-                            {v.short} → {v.long}
+                          <option key={idx} value={`${v.short}|${v.long}|${v.dexShort || ''}|${v.dexLong || ''}`}>
+                            {v.short}{v.dexShort ? ` (${v.dexShort})` : ''} → {v.long}{v.dexLong ? ` (${v.dexLong})` : ''}
                           </option>
                         ))}
                       </select>
@@ -845,19 +923,14 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
               {/* Exchange Info Cards - filtered to match snapshot venues */}
               <div className="space-y-4">
-                {exchangeInfo
-                  .filter(ex =>
-                    liveSnapshot
-                      ? (ex.name === liveSnapshot.venue_short || ex.name === liveSnapshot.venue_long)
-                      : true
-                  )
-                  .slice(0, 2)
-                  .map((exchange, idx) => (
+                {displayExchangeInfo.map((exchange, idx) => (
                   <div
                     key={idx}
-                    className={`rounded-xl p-4 ${exchange.type === 'short'
-                      ? 'bg-red-900 bg-opacity-30 border border-red-700'
-                      : 'bg-green-900 bg-opacity-30 border border-green-700'
+                    className={`rounded-xl p-4 ${exchange.missing
+                      ? 'bg-gray-900/40 border border-gray-700'
+                      : exchange.type === 'short'
+                        ? 'bg-red-900 bg-opacity-30 border border-red-700'
+                        : 'bg-green-900 bg-opacity-30 border border-green-700'
                       }`}
                   >
                     <div className="flex items-start justify-between mb-3">
@@ -877,8 +950,8 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                       </div>
                       <div className="text-right">
                         <div className="text-xs text-gray-400">Funding Rate (1h):</div>
-                        <div className={`text-sm font-bold ${getAPRColor(exchange.apr)}`}>
-                          {(exchange.funding_rate * 100).toFixed(4)}%
+                        <div className={`text-sm font-bold ${exchange.missing ? 'text-gray-400' : getAPRColor(exchange.apr)}`}>
+                          {exchange.missing ? 'N/A' : `${(exchange.funding_rate * 100).toFixed(4)}%`}
                         </div>
                       </div>
                     </div>
@@ -886,13 +959,13 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-400">APR:</span>
-                        <span className={`font-bold ${getAPRColor(exchange.apr)}`}>
-                          {formatAPR(exchange.apr)}
+                        <span className={`font-bold ${exchange.missing ? 'text-gray-400' : getAPRColor(exchange.apr)}`}>
+                          {exchange.missing ? 'N/A' : formatAPR(exchange.apr)}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Taker fee:</span>
-                        <span className="text-white">{exchange.taker_fee}%</span>
+                        <span className="text-white">{exchange.missing ? 'N/A' : `${exchange.taker_fee}%`}</span>
                       </div>
                     </div>
                   </div>
@@ -920,7 +993,11 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Spread (bps):</span>
-                        <span className="text-white">{liveSnapshot.price_spread_bps?.toFixed(2) || 'N/A'}</span>
+                        <span className={`font-mono ${getSpreadColor(liveSnapshot.price_spread_bps || 0)}`}>
+                          {Number.isFinite(liveSnapshot.price_spread_bps)
+                            ? `${liveSnapshot.price_spread_bps >= 0 ? '+' : ''}${liveSnapshot.price_spread_bps.toFixed(2)} bps (${liveSnapshot.price_spread_bps >= 0 ? '+' : ''}${(liveSnapshot.price_spread_bps / 100).toFixed(3)}%)`
+                            : 'N/A'}
+                        </span>
                       </div>
                       <div className="text-xs text-gray-500 mt-2">
                         Updated: {new Date(liveSnapshot.last_update).toLocaleTimeString()}
@@ -971,7 +1048,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                           border: '1px solid #374151',
                           borderRadius: '0.5rem',
                         }}
-                        formatter={(value: number) => [`${value.toFixed(1)} bps`, 'Spread']}
+                        formatter={(value: number) => [
+                          `${value >= 0 ? '+' : ''}${value.toFixed(1)} bps (${value >= 0 ? '+' : ''}${(value / 100).toFixed(3)}%)`,
+                          'Spread'
+                        ]}
                       />
                       <ReferenceLine y={10} stroke="#10B981" strokeDasharray="3 3" label={{ value: '10 bps', fill: '#10B981', fontSize: 10 }} />
                       <ReferenceLine y={30} stroke="#F59E0B" strokeDasharray="3 3" label={{ value: '30 bps', fill: '#F59E0B', fontSize: 10 }} />
@@ -1000,7 +1080,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                       Funding Rates (Short vs Long)
                     </h3>
                     <p className="text-xs text-gray-400 mt-1">
-                      Hourly rates by side for the selected venue pair
+                      Hourly funding rates (1h, bps) for the selected venue pair
                     </p>
                   </div>
                   <div className="hidden sm:flex items-center gap-2 text-xs">
@@ -1029,7 +1109,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                       <YAxis
                         stroke="#9CA3AF"
                         tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                        tickFormatter={(value) => `${(value * 10000).toFixed(1)} bps`}
+                        tickFormatter={(value) => `${(value * 10000).toFixed(2)} bps`}
                       />
                       <Tooltip
                         contentStyle={{
@@ -1206,16 +1286,16 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
                       )}
                     </div>
 
-                    {opportunity?.spread_bps !== undefined && (
+                    {Number.isFinite(currentSpreadBps) && (
                       <div className="bg-gray-900 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-400">Current Price Spread</span>
                           <div className="text-right">
-                            <span className={`font-mono font-bold ${getSpreadColor(opportunity.spread_bps!)}`}>
-                              {opportunity.spread_bps!.toFixed(1)} bps
+                            <span className={`font-mono font-bold ${getSpreadColor(currentSpreadBps)}`}>
+                              {currentSpreadBps >= 0 ? '+' : ''}{currentSpreadBps.toFixed(1)} bps
                             </span>
-                            <span className={`ml-2 font-mono ${getSpreadColor(opportunity.spread_bps!)}`}>
-                              ({(opportunity.spread_bps! / 100).toFixed(2)}%)
+                            <span className={`ml-2 font-mono ${getSpreadColor(currentSpreadBps)}`}>
+                              ({currentSpreadBps >= 0 ? '+' : ''}{(currentSpreadBps / 100).toFixed(2)}%)
                             </span>
                           </div>
                         </div>

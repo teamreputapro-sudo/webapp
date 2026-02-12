@@ -116,6 +116,15 @@ curl -s https://54strategydigital.com/ | head -20
   - Mejora visual del grafico `Funding Rates (short vs long)`.
   - Se elimina la frase auxiliar bajo el bloque de imbalance de OI.
 
+### Scanner/Detail Consistency - 2026-02-12
+- `Price Spread` se muestra en formato dual en detalle: `bps` + `%` (header, live snapshot y tooltip de `Price Spread History`).
+- El bloque de `Current Price Spread` usa el mismo valor live que la cabecera, evitando diferencias visuales.
+- Seleccion de par en detalle conserva `venue + dex` para evitar mezclar patas HIP-3.
+- Si falta una pata temporalmente en exchange info, se mantienen ambas cajas (`short` y `long`) con `N/A` en lugar de ocultar una.
+- Cadencia unificada a 60s en frontend:
+  - `OpportunitiesScanner` auto-refresh/caché local: `60s`.
+  - `SymbolDetailModal` polling live + cachés derivados: `60s`.
+
 ### Opportunities Scanner
 - Oportunidades de arbitraje en tiempo real
 - Filtro por APR minimo

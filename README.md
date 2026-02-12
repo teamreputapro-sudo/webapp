@@ -174,6 +174,11 @@ curl -s https://54strategydigital.com/ | head -20
   - Mejora visual de cards AVG en el panel superior.
   - Mejora visual del grafico `Funding Rates (Short vs Long)`.
   - Se elimina la frase auxiliar bajo el bloque de imbalance de OI.
+- Consistencia scanner/detalle (2026-02-12):
+  - `Price Spread` en detalle se muestra como `bps + %` (cabecera, live snapshot y tooltip de historial).
+  - El `Current Price Spread` del bloque OI usa el mismo valor live de cabecera.
+  - Seleccion de par en detalle conserva `venue + dex` para no mezclar legs HIP-3.
+  - Cadencia frontend alineada a `60s` (scanner auto-refresh/cache y polling/caches de detalle).
 
 ---
 

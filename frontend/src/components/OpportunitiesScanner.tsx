@@ -103,7 +103,7 @@ interface TopPerformer {
 }
 
 const ITEMS_PER_PAGE = 10;
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 60_000;
 
 export default function OpportunitiesScanner() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -172,16 +172,16 @@ export default function OpportunitiesScanner() {
   }, [currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
 
   // Auto-refresh the scanner list. We intentionally bypass the local in-memory cache so that
-  // the list doesn't lag behind the detail view (which polls live snapshot every 30s).
+  // the list doesn't lag behind the detail view (both poll at 60s cadence).
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       // The server may still serve cached data (nginx/CF). Do a lightweight cache-bust
       // periodically so values stay consistent with the detail view.
       autoRefreshTick.current += 1;
-      const hardRefresh = (autoRefreshTick.current % 4) === 0; // ~ every 2 minutes
+      const hardRefresh = (autoRefreshTick.current % 2) === 0; // ~ every 2 minutes
       fetchData({ bypassLocalCache: true, hardRefresh });
-    }, 30_000);
+    }, 60_000);
     return () => clearInterval(interval);
   }, [autoRefresh, currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
 
@@ -813,7 +813,7 @@ export default function OpportunitiesScanner() {
                   ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/30'
                   : 'bg-gray-100 dark:bg-surface-700 hover:bg-gray-200 dark:hover:bg-surface-600'
               }`}
-              title="Auto-refresh every 30s"
+              title="Auto-refresh every 60s"
             >
               Auto {autoRefresh ? 'On' : 'Off'}
             </button>

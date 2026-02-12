@@ -93,6 +93,17 @@ Implemented:
   - Improved AVG card sizing/spacing in the top summary panel.
   - Improved `Funding Rates (Short vs Long)` chart readability (axis/spacing/height).
 
+Consistency update (2026-02-12):
+- Detail `Price Spread` is rendered as `bps + %` in:
+  - Header summary
+  - Live Snapshot card
+  - Price Spread History tooltip
+- Detail pair selector preserves `venue + dex` identity to avoid HIP-3 leg mixing.
+- Exchange comparison cards keep both sides visible (`short`/`long`) with `N/A` placeholders if one leg is temporarily missing.
+- Frontend cadence aligned to `60s`:
+  - Scanner auto-refresh/local cache
+  - Detail live polling + derived caches
+
 Verification notes:
 - `npm run build` in `frontend/` passes.
 - `npm run build:root` in repo root passes.
