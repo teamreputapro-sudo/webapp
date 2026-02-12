@@ -139,6 +139,7 @@ export default function OpportunitiesScanner() {
   const [hip3FilterDraft, setHip3FilterDraft] = useState<'all' | 'crypto' | 'hip3'>('all');
   const cacheRef = useRef<Map<string, { data: Opportunity[]; total: number; ts: number }>>(new Map());
   const requestSeq = useRef(0);
+  const activeRequestRef = useRef<AbortController | null>(null);
   const buildDetailUrl = (opp: Opportunity) => {
     const params = new URLSearchParams();
     if (opp.exchange_short) params.set('venue_short', opp.exchange_short);
@@ -172,6 +173,12 @@ export default function OpportunitiesScanner() {
   useEffect(() => {
     fetchData();
   }, [currentPage, searchQuery, selectedVenues, hideRecentlyListed, sortBy, sortDirection, hip3Filter]);
+
+  useEffect(() => {
+    return () => {
+      activeRequestRef.current?.abort();
+    };
+  }, []);
 
   // Auto-refresh the scanner list. We intentionally bypass the local in-memory cache so that
   // the list doesn't lag behind the detail view (both poll at 60s cadence).
@@ -243,6 +250,7 @@ export default function OpportunitiesScanner() {
   };
 
   const fetchData = async (opts?: { bypassLocalCache?: boolean; hardRefresh?: boolean }) => {
+    let reqId = 0;
     try {
       const initial = opportunities.length === 0;
       if (initial) setLoading(true);
@@ -274,16 +282,21 @@ export default function OpportunitiesScanner() {
         return;
       }
 
-      const reqId = ++requestSeq.current;
+      activeRequestRef.current?.abort();
+      const requestController = new AbortController();
+      activeRequestRef.current = requestController;
+      reqId = ++requestSeq.current;
       const fetchWithRetry = async () => {
-        const delays = [600, 1200, 2000];
+        const delays = initial ? [500, 1000] : [400];
         for (let attempt = 0; attempt <= delays.length; attempt += 1) {
           try {
               return await axios.get(buildApiUrl('/api/opportunities'), {
                 params,
-                timeout: 12000,
+                timeout: 8000,
+                signal: requestController.signal,
               });
           } catch (err) {
+            if ((err as { code?: string })?.code === 'ERR_CANCELED') throw err;
             if (attempt === delays.length) throw err;
             await new Promise(res => setTimeout(res, delays[attempt]));
           }
@@ -314,6 +327,7 @@ export default function OpportunitiesScanner() {
       }
 
       const totalPages = Math.max(1, Math.ceil(baseTotal / ITEMS_PER_PAGE));
+      const shouldPrefetch = !searchQuery && !hideRecentlyListed && hip3Filter === 'all';
       const prefetchPage = async (page: number) => {
         if (page < 1 || page > totalPages) return;
         const preParams = { ...params, page };
@@ -323,7 +337,8 @@ export default function OpportunitiesScanner() {
         try {
           const res = await axios.get(buildApiUrl('/api/opportunities'), {
             params: preParams,
-            timeout: 12000,
+            timeout: 8000,
+            signal: requestController.signal,
           });
           const preOpps: Opportunity[] = res.data.opportunities || [];
           const preTotal = res.data.total_count || preOpps.length;
@@ -333,18 +348,25 @@ export default function OpportunitiesScanner() {
         }
       };
 
-      prefetchPage(currentPage + 1);
-      if (currentPage > 1) {
-        prefetchPage(currentPage - 1);
+      if (shouldPrefetch) {
+        prefetchPage(currentPage + 1);
+        if (currentPage > 1) {
+          prefetchPage(currentPage - 1);
+        }
       }
 
       setError(null);
     } catch (err) {
+      if ((err as { code?: string })?.code === 'ERR_CANCELED') {
+        return;
+      }
       setError('Failed to fetch opportunities');
       console.error(err);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (reqId === requestSeq.current || reqId === 0) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 

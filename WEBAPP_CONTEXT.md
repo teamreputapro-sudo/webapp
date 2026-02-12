@@ -122,8 +122,11 @@ Verification notes:
 
 Source sync note (2026-02-12):
 - This repo has two parallel trees: `src/` and `frontend/src/`.
-- Production builds are generated from `src/` (`npm run build:scanner` / `npm run build:root`).
-- If only `frontend/src/` is updated, scanner detail routes may disappear in production (e.g. `/scanner/s/:symbol` falling back to home).
+- **Canonical / active tree (new):** `src/`
+  - Used by production build commands: `npm run build:scanner` and `npm run build:root`.
+- **Mirror / compatibility tree (legacy):** `frontend/src/`
+  - Kept in sync for context/history and older workflows, but does not drive production deploy by itself.
+- If changes are applied only to `frontend/src/`, production can lose routes/features (example: `/scanner/s/:symbol` falling back to home).
 - Keep both trees synchronized for shared components:
   - `App.tsx`
   - `components/OpportunitiesScanner.tsx`

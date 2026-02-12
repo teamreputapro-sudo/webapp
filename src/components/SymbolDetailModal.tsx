@@ -175,6 +175,21 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     dexLong?: string | null;
   } | null>(getInitialVenues);
 
+  const normVenue = (value?: string | null) => (value || '').trim().toLowerCase();
+  const sameDex = (a?: string | null, b?: string | null) => (a || '') === (b || '');
+  const selectedMatchesOpportunity = (() => {
+    if (!selectedVenues) return false;
+    const oppShort = opportunity?.exchange_short || opportunity?.short_exchange;
+    const oppLong = opportunity?.exchange_long || opportunity?.long_exchange;
+    if (!oppShort || !oppLong) return false;
+    return (
+      normVenue(selectedVenues.short) === normVenue(oppShort) &&
+      normVenue(selectedVenues.long) === normVenue(oppLong) &&
+      sameDex(selectedVenues.dexShort, opportunity?.dex_name_short || null) &&
+      sameDex(selectedVenues.dexLong, opportunity?.dex_name_long || null)
+    );
+  })();
+
   useEffect(() => {
     fetchSymbolData();
     const interval = setInterval(fetchLiveData, 60000); // Update every 60s
@@ -190,6 +205,11 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
   useEffect(() => {
     const venues = selectedVenues;
     if (!venues) return;
+    if (selectedMatchesOpportunity && typeof opportunity?.apr_3d === 'number' && Number.isFinite(opportunity.apr_3d)) {
+      setAvgApr3d(opportunity.apr_3d);
+      THREED_AVG_CACHE.set(get3dKey(symbol, venues), { ts: Date.now(), avgApr3d: opportunity.apr_3d });
+      return;
+    }
     const key = get3dKey(symbol, venues);
     const cached = THREED_AVG_CACHE.get(key);
     if (cached && Date.now() - cached.ts < THREED_AVG_TTL_MS) {
@@ -203,7 +223,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
         url += `&venue_short=${venues.short}&venue_long=${venues.long}`;
         if (venues.dexShort) url += `&dex_name_short=${encodeURIComponent(venues.dexShort)}`;
         if (venues.dexLong) url += `&dex_name_long=${encodeURIComponent(venues.dexLong)}`;
-        const res = await axios.get(url);
+        const res = await axios.get(url, { timeout: 10000 });
         const data: HistoricalData[] = Array.isArray(res.data) ? res.data : [];
 
         const cutoff = Date.now() - 72 * 60 * 60 * 1000;
@@ -226,12 +246,26 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     };
 
     compute();
-  }, [symbol, selectedVenues]);
+  }, [symbol, selectedVenues, selectedMatchesOpportunity, opportunity?.apr_3d]);
 
   // Compute 7d / 30d averages from 31d history so header stats are available even when route state is partial.
   useEffect(() => {
     const venues = selectedVenues;
     if (!venues) return;
+    if (selectedMatchesOpportunity) {
+      const has7d = typeof opportunity?.apr_7d === 'number' && Number.isFinite(opportunity.apr_7d);
+      const has30d = typeof opportunity?.apr_30d === 'number' && Number.isFinite(opportunity.apr_30d);
+      if (has7d) setAvgApr7dDerived(opportunity!.apr_7d!);
+      if (has30d) setAvgApr30dDerived(opportunity!.apr_30d!);
+      if (has7d && has30d) {
+        LONGTERM_AVG_CACHE.set(getLongtermKey(symbol, venues), {
+          ts: Date.now(),
+          avgApr7d: opportunity!.apr_7d!,
+          avgApr30d: opportunity!.apr_30d!,
+        });
+        return;
+      }
+    }
     const key = getLongtermKey(symbol, venues);
     const cached = LONGTERM_AVG_CACHE.get(key);
     if (cached && Date.now() - cached.ts < LONGTERM_AVG_TTL_MS) {
@@ -246,7 +280,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
         url += `&venue_short=${venues.short}&venue_long=${venues.long}`;
         if (venues.dexShort) url += `&dex_name_short=${encodeURIComponent(venues.dexShort)}`;
         if (venues.dexLong) url += `&dex_name_long=${encodeURIComponent(venues.dexLong)}`;
-        const res = await axios.get(url);
+        const res = await axios.get(url, { timeout: 10000 });
         const data: HistoricalData[] = Array.isArray(res.data) ? res.data : [];
         const filtered = data.filter((d) => d.venue_short === venues.short && d.venue_long === venues.long);
         const now = Date.now();
@@ -282,7 +316,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
     };
 
     compute();
-  }, [symbol, selectedVenues]);
+  }, [symbol, selectedVenues, selectedMatchesOpportunity, opportunity?.apr_7d, opportunity?.apr_30d]);
 
   const fetchSymbolData = async () => {
     const cacheKey = getCacheKey(symbol, timeframe, selectedVenues);
@@ -356,10 +390,10 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
 
       // Fetch all data in parallel from real API
       const [historyRes, exchangesRes, snapshotRes, statsRes] = await Promise.allSettled([
-        axios.get(historyUrl),
-        axios.get(exchangesUrl),
-        axios.get(snapshotUrl),
-        axios.get(statsUrl)
+        axios.get(historyUrl, { timeout: 12000 }),
+        axios.get(exchangesUrl, { timeout: 8000 }),
+        axios.get(snapshotUrl, { timeout: 8000 }),
+        axios.get(statsUrl, { timeout: 8000 })
       ]);
 
       // Process historical data
@@ -416,7 +450,7 @@ export default function SymbolDetailModal({ symbol, opportunity, onClose, mode =
           snapshotUrl += `&dex_name_long=${encodeURIComponent(selectedVenues.dexLong)}`;
         }
       }
-      const response = await axios.get(snapshotUrl);
+      const response = await axios.get(snapshotUrl, { timeout: 6000 });
       if (response.data) {
         setLiveSnapshot(response.data);
       }

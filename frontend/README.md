@@ -141,7 +141,10 @@ curl -s https://54strategydigital.com/ | head -20
     - Se agregó fallback defensivo cuando falte una posición.
 
 ### Build Sync Guardrail - 2026-02-12
-- El deploy productivo usa `src/` (no solo `frontend/src/`).
+- Árbol canónico (nuevo): `src/`
+  - Es el que usa `npm run build:scanner` y `npm run build:root`.
+- Árbol espejo (legacy): `frontend/src/`
+  - Se mantiene sincronizado, pero no es suficiente para producción si se toca en solitario.
 - Se detectó un desfase entre ambos árboles que rompía `/scanner/s/:symbol` y mostraba fallback a home.
 - Se re-sincronizaron los archivos de scanner/detail entre `frontend/src` y `src`.
 

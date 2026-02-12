@@ -77,17 +77,20 @@ npm run build
 ## Estructura
 
 ```
-frontend/
-├── src/
-│   ├── components/
-│   ├── services/
-│   ├── types/
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── index.css
+src/                    # Arbol canónico (usado en builds de producción)
+├── components/
+├── services/
+├── types/
+├── App.tsx
+├── main.tsx
+└── index.css
+frontend/src/           # Arbol espejo / compatibilidad (mantener sincronizado)
 public/
 scanner-router/
 ```
+
+- Build productivo (`npm run build:scanner`, `npm run build:root`) sale de `src/`.
+- Si se toca solo `frontend/src/`, los cambios pueden no llegar a producción.
 
 ---
 
